@@ -22,12 +22,14 @@ def test_redaction_hides_secret_values() -> None:
     values = {
         "CAO_PC_PASSWORD": "secret",
         "Authorization": "Bearer abc",
+        "CAO_ADMIN_DATABASE_URL": "postgresql://cao:secret@example.invalid/cao",
         "CAO_PC_URL": "https://example.invalid",
     }
 
     assert redact_mapping(values) == {
         "CAO_PC_PASSWORD": "***REDACTED***",
         "Authorization": "***REDACTED***",
+        "CAO_ADMIN_DATABASE_URL": "***REDACTED***",
         "CAO_PC_URL": "https://example.invalid",
     }
 
@@ -53,3 +55,16 @@ def test_load_settings_from_local_env(tmp_path: Path) -> None:
     assert settings.demo_mode is False
     assert settings.pc_url == "https://192.0.2.205:9440/"
     assert settings.redacted()["pc_password"] == "***REDACTED***"
+
+
+def test_load_settings_reads_and_redacts_admin_database_url(tmp_path: Path) -> None:
+    env_file = tmp_path / "local.env"
+    env_file.write_text(
+        "CAO_ADMIN_DATABASE_URL=postgresql://cao:secret@postgres:5432/cao",
+        encoding="utf-8",
+    )
+
+    settings = load_settings(env_file)
+
+    assert settings.admin_database_url == "postgresql://cao:secret@postgres:5432/cao"
+    assert settings.redacted()["admin_database_url"] == "***REDACTED***"

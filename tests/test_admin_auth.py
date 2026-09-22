@@ -146,3 +146,26 @@ def test_connection_test_maps_inventory_auth_failure(monkeypatch: pytest.MonkeyP
 
     assert test_response.status_code == 200
     assert test_response.json()["status"] == "AUTH_FAILED"
+
+
+def test_storage_status_redacts_locations_and_reports_sqlite_fallback(tmp_path) -> None:
+    client = TestClient(create_app(Settings(demo_mode=True, evidence_dir=str(tmp_path), admin_db_path=str(tmp_path / "admin.sqlite3"))))
+    headers = auth_headers(client)
+
+    response = client.get("/api/v1/storage/status", headers=headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["backend"] == "sqlite"
+    assert payload["backup_supported"] is False
+    assert payload["data_directory"] == "configured locally"
+    assert str(tmp_path) not in response.text
+
+
+def test_storage_backup_requires_postgres_backend(tmp_path) -> None:
+    client = TestClient(create_app(Settings(demo_mode=True, evidence_dir=str(tmp_path), admin_db_path=str(tmp_path / "admin.sqlite3"))))
+    headers = auth_headers(client)
+
+    response = client.post("/api/v1/storage/backups", headers=headers)
+
+    assert response.status_code == 409

@@ -1,4 +1,23 @@
 services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: cluster-assurance-postgres
+    restart: unless-stopped
+    env_file:
+      - path: ./config/appliance.env.example
+      - path: ./config/appliance.env
+        required: false
+    environment:
+      POSTGRES_DB: cao
+      POSTGRES_USER: cao
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cao -d cao"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - cao-postgres:/var/lib/postgresql/data
+
   cluster-assurance:
     build:
       context: .
@@ -13,8 +32,12 @@ services:
       - path: ./config/appliance.env.example
       - path: ./config/appliance.env
         required: false
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
       - cao-data:/data
 
 volumes:
   cao-data:
+  cao-postgres:

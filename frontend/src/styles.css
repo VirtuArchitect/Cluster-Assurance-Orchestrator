@@ -665,6 +665,12 @@ nav button:focus-visible {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
+  margin-bottom: 0;
+}
+
+.visual-summary-grid,
+.run-visual-grid,
+.schedule-ops-grid {
   margin-bottom: 16px;
 }
 
@@ -1495,9 +1501,133 @@ nav button:focus-visible {
   overflow-wrap: anywhere;
 }
 
-.settings-shell {
+.storage-settings {
+  display: grid;
+  gap: 18px;
+}
+
+.storage-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.storage-card,
+.storage-backups {
+  display: grid;
+  gap: 18px;
+}
+
+.storage-card-heading,
+.storage-backup-heading {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.storage-card-heading {
+  justify-content: flex-start;
+}
+
+.storage-card-heading h2,
+.storage-backup-heading h2 {
+  margin: 0;
+}
+
+.storage-card-heading p,
+.storage-backup-heading p,
+.storage-note,
+.storage-backups > p {
+  color: var(--muted);
+  margin: 2px 0 0;
+}
+
+.storage-card-icon {
+  align-items: center;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--primary);
+  display: inline-flex;
+  height: 42px;
+  justify-content: center;
+  width: 42px;
+}
+
+.storage-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin: 0;
+}
+
+.storage-fields div {
+  display: grid;
+  gap: 6px;
+}
+
+.storage-fields dt {
+  color: var(--muted-strong);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.storage-fields dd {
+  align-items: center;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  display: flex;
+  margin: 0;
+  min-height: 44px;
+  overflow-wrap: anywhere;
+  padding: 9px 12px;
+}
+
+.storage-card-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.storage-card-actions span {
+  color: var(--muted);
+}
+
+.backup-list {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.backup-row {
+  align-items: center;
   display: grid;
   gap: 16px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 14px 16px;
+}
+
+.backup-row + .backup-row {
+  border-top: 1px solid var(--border);
+}
+
+.backup-row strong,
+.backup-row span {
+  display: block;
+}
+
+.backup-row span {
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.settings-shell {
+  display: grid;
+  gap: 18px;
 }
 
 .settings-nav,
@@ -1546,7 +1676,10 @@ nav button:focus-visible {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: var(--shadow);
+  box-shadow: none;
+  justify-content: flex-start;
+  margin-bottom: 10px;
+  max-width: 920px;
   padding: 6px;
 }
 
@@ -1568,8 +1701,8 @@ nav button:focus-visible {
   background: transparent;
   border: 1px solid transparent;
   color: var(--muted-strong);
-  min-height: 34px;
-  padding: 7px 12px;
+  min-height: 44px;
+  padding: 10px 16px;
 }
 
 .settings-nav button:hover,
@@ -1942,6 +2075,17 @@ nav button:focus-visible {
 
   .collector-focus {
     grid-template-columns: 1fr;
+  }
+
+  .storage-settings-grid,
+  .storage-fields,
+  .backup-row {
+    grid-template-columns: 1fr;
+  }
+
+  .storage-backup-heading {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .topbar,

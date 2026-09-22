@@ -1,15 +1,16 @@
 # Cluster Assurance Orchestrator Appliance
 
-This appliance profile packages the API and operator console into one container with a persistent data volume. It is intended for lab validation, controlled UAT and internal operational-support workflows.
+This appliance profile packages the API/operator console with a Postgres settings database. It is intended for lab validation, controlled UAT and internal operational-support workflows.
 
 It is not an official Nutanix product and does not make production-readiness claims by itself. Evidence gathered with `CAO_TLS_MODE=insecure_skip_verify` is labelled lab-only.
 
 ## Contents
 
 - `cluster-assurance-orchestrator:<version>` Docker image, when built by `scripts/build-appliance.ps1`.
-- `docker-compose.yml` for a one-container deployment.
+- `docker-compose.yml` for the API/console and Postgres deployment.
 - `config/appliance.env.example` as the operator-editable configuration template.
-- Persistent `/data` volume for evidence, RBAC, schedules, connection metadata, sealed secrets and audit events.
+- Persistent Postgres volume for RBAC, schedules, connection metadata, sealed secrets and audit events.
+- Persistent `/data` volume for evidence, archives and restore-drill artifacts.
 
 ## Build
 
@@ -31,9 +32,10 @@ Use `-SkipDockerImage` to create a lightweight bundle without an image tar.
 1. Extract the appliance ZIP on the target host.
 2. Copy `config/appliance.env.example` to `config/appliance.env`.
 3. Set `CAO_AUTH_SECRET` to a long random value.
-4. Set `CAO_BOOTSTRAP_ADMIN_PASSWORD` before first start, or rotate the admin password immediately after first sign-in.
-5. For labs with self-signed Prism certificates, set `CAO_TLS_MODE=insecure_skip_verify`; keep `strict` for trusted environments.
-6. Start the appliance:
+4. Set `POSTGRES_PASSWORD` and the password portion of `CAO_ADMIN_DATABASE_URL` to the same strong value.
+5. Set `CAO_BOOTSTRAP_ADMIN_PASSWORD` before first start, or rotate the admin password immediately after first sign-in.
+6. For labs with self-signed Prism certificates, set `CAO_TLS_MODE=insecure_skip_verify`; keep `strict` for trusted environments.
+7. Start the appliance:
 
 ```powershell
 docker compose up -d
@@ -61,10 +63,11 @@ docker load -i .\cluster-assurance-orchestrator-0.1.0-image.tar
 
 ## Backup
 
-The named Docker volume contains local state. Back it up before upgrades:
+Use **Settings > Storage** to create and download an on-demand Postgres logical export from the console. The named Docker volumes also contain local state and should be backed up before upgrades:
 
 ```powershell
-docker run --rm -v cluster-assurance-orchestrator_cao-data:/data -v ${PWD}:/backup alpine tar czf /backup/cao-data-backup.tgz -C /data .
+docker run --rm --volumes-from cluster-assurance-orchestrator -v ${PWD}:/backup alpine tar czf /backup/cao-data-backup.tgz -C /data .
+docker compose exec -T postgres pg_dump -U cao -d cao > cao-settings-backup.sql
 ```
 
 Also use the in-app evidence archive and restore-drill controls before making release claims.

@@ -12,7 +12,7 @@ import secrets
 import sqlite3
 import ssl
 from time import perf_counter
-from typing import Any
+from typing import Any, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -24,6 +24,71 @@ from app.services.scheduling import default_profile
 
 SESSION_TTL_HOURS = 12
 PASSWORD_ITERATIONS = 260_000
+
+
+try:
+    import psycopg
+    from psycopg.rows import dict_row
+except ImportError:  # pragma: no cover - exercised only when optional postgres driver is absent
+    psycopg = None  # type: ignore[assignment]
+    dict_row = None  # type: ignore[assignment]
+
+
+class DbCursor(Protocol):
+    rowcount: int
+
+    def fetchone(self) -> Any:
+        ...
+
+    def __iter__(self) -> Any:
+        ...
+
+
+class DbConnection(Protocol):
+    def execute(self, sql: str, parameters: tuple[Any, ...] | list[Any] = ()) -> DbCursor:
+        ...
+
+    def executescript(self, sql: str) -> None:
+        ...
+
+    def commit(self) -> None:
+        ...
+
+    def __enter__(self) -> "DbConnection":
+        ...
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        ...
+
+
+class PostgresConnection:
+    def __init__(self, database_url: str):
+        if psycopg is None or dict_row is None:
+            raise RuntimeError("Postgres storage requires the psycopg package")
+        self._connection = psycopg.connect(database_url, row_factory=dict_row)
+
+    def execute(self, sql: str, parameters: tuple[Any, ...] | list[Any] = ()) -> DbCursor:
+        translated = sql.replace("?", "%s")
+        if "INSERT OR IGNORE INTO" in translated:
+            translated = translated.replace("INSERT OR IGNORE INTO", "INSERT INTO", 1)
+            translated = translated.rstrip().rstrip(";") + " ON CONFLICT DO NOTHING"
+        return self._connection.execute(translated, parameters)
+
+    def executescript(self, sql: str) -> None:
+        for statement in sql.split(";"):
+            if statement.strip():
+                self.execute(statement)
+
+    def commit(self) -> None:
+        self._connection.commit()
+
+    def __enter__(self) -> "PostgresConnection":
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        if exc_type is not None:
+            self._connection.rollback()
+        self._connection.close()
 
 
 @dataclass(frozen=True)
@@ -40,18 +105,33 @@ class Principal:
 
 class AdminStore:
     def __init__(self, settings: Settings):
-        db_path = Path(settings.admin_db_path) if settings.admin_db_path else Path(settings.evidence_dir) / "cao-admin.sqlite3"
-        db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.db_path = db_path
         self.settings = settings
+        self.database_url = settings.admin_database_url.strip()
+        self.storage_backend = "postgres" if self.database_url else "sqlite"
+        if self.storage_backend == "sqlite":
+            db_path = Path(settings.admin_db_path) if settings.admin_db_path else Path(settings.evidence_dir) / "cao-admin.sqlite3"
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+            self.db_path = db_path
+        else:
+            self.db_path = None
         self._init_db()
         self._seed_defaults()
 
-    def connect(self) -> sqlite3.Connection:
+    def connect(self) -> DbConnection:
+        if self.storage_backend == "postgres":
+            return PostgresConnection(self.database_url)
         connection = sqlite3.connect(self.db_path)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
         return connection
+
+    def check_health(self) -> bool:
+        try:
+            with self.connect() as connection:
+                connection.execute("SELECT 1").fetchone()
+            return True
+        except Exception:
+            return False
 
     def login(self, username: str, password: str, request_ip: str = "") -> dict[str, Any]:
         with self.connect() as connection:

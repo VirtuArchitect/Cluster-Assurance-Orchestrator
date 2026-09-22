@@ -5,7 +5,7 @@ from pathlib import Path
 import os
 
 
-SECRET_KEYS = ("PASSWORD", "TOKEN", "SECRET", "COOKIE", "AUTHORIZATION")
+SECRET_KEYS = ("PASSWORD", "TOKEN", "SECRET", "COOKIE", "AUTHORIZATION", "DATABASE_URL")
 
 
 @dataclass(frozen=True)
@@ -29,10 +29,13 @@ class Settings:
     per_cluster_concurrency: int = 1
     evidence_dir: str = "./evidence/lab"
     admin_db_path: str = ""
+    admin_database_url: str = ""
     auth_secret: str = "dev-local-auth-secret-change-me"
     bootstrap_admin_password: str = "ChangeMe123!"
     evidence_retention_days: int = 30
     evidence_retention_min_runs: int = 10
+    audit_retention_days: int = 90
+    execution_retention_days: int = 180
     enable_alerts: bool = False
     alert_email_to: str = ""
     alert_webhook_url: str = ""
@@ -49,6 +52,8 @@ class Settings:
             raise ValueError("concurrency limits must be positive")
         if self.evidence_retention_days < 1 or self.evidence_retention_min_runs < 1:
             raise ValueError("evidence retention limits must be positive")
+        if self.audit_retention_days < 1 or self.execution_retention_days < 1:
+            raise ValueError("operational retention limits must be positive")
 
     def redacted(self) -> dict[str, object]:
         output = self.__dict__.copy()
@@ -99,10 +104,13 @@ def load_settings(env_file: str | Path | None = None) -> Settings:
         per_cluster_concurrency=int(values.get("CAO_PER_CLUSTER_CONCURRENCY", "1")),
         evidence_dir=str(values.get("CAO_EVIDENCE_DIR", "./evidence/lab")),
         admin_db_path=str(values.get("CAO_ADMIN_DB_PATH", "")),
+        admin_database_url=str(values.get("CAO_ADMIN_DATABASE_URL", "")),
         auth_secret=str(values.get("CAO_AUTH_SECRET", "dev-local-auth-secret-change-me")),
         bootstrap_admin_password=str(values.get("CAO_BOOTSTRAP_ADMIN_PASSWORD", "ChangeMe123!")),
         evidence_retention_days=int(values.get("CAO_EVIDENCE_RETENTION_DAYS", "30")),
         evidence_retention_min_runs=int(values.get("CAO_EVIDENCE_RETENTION_MIN_RUNS", "10")),
+        audit_retention_days=int(values.get("CAO_AUDIT_RETENTION_DAYS", "90")),
+        execution_retention_days=int(values.get("CAO_EXECUTION_RETENTION_DAYS", "180")),
         enable_alerts=parse_bool(values.get("CAO_ENABLE_ALERTS", "false")),
         alert_email_to=str(values.get("CAO_ALERT_EMAIL_TO", "")),
         alert_webhook_url=str(values.get("CAO_ALERT_WEBHOOK_URL", "")),

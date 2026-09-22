@@ -23,7 +23,7 @@ def build_support_status(settings: Settings, api_url: str) -> dict[str, Any]:
         "api_url": api_url,
         "config_source": settings.config_source,
         "evidence_directory": "configured locally",
-        "admin_database": "configured locally",
+        "admin_database": "Postgres" if settings.admin_database_url else "SQLite fallback",
         "latest_run": latest,
         "collector_failures": latest.get("collector_failures", []),
         "warnings": runtime_warnings(settings, latest),

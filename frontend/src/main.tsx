@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   Clock3,
   Database,
+  Download,
   Eye,
   EyeOff,
   Filter,
@@ -39,7 +40,7 @@ const APP_VERSION_TAG = `v${APP_VERSION}`;
 
 type HealthStatus = "CRITICAL" | "UNKNOWN" | "WARNING" | "OVERDUE" | "HEALTHY";
 type ThemeMode = "light" | "dark";
-type SettingsPageId = "connections" | "readiness" | "rbac" | "ncc" | "audit" | "about";
+type SettingsPageId = "storage" | "connections" | "readiness" | "rbac" | "ncc" | "audit" | "about";
 type PageId =
   | "dashboard"
   | "triage"
@@ -312,6 +313,7 @@ type SupportStatus = {
   api_url: string;
   config_source: string;
   evidence_directory: string;
+  admin_database: string;
   latest_run: {
     available: boolean;
     run_id: string | null;
@@ -332,6 +334,30 @@ type RetentionReport = {
   deletable_runs: number;
   deletable_files?: string[];
   deleted_files?: string[];
+};
+
+type DatabaseBackup = {
+  name: string;
+  created_at: string;
+  size_bytes: number;
+  size_label: string;
+};
+
+type StorageStatus = {
+  backend: string;
+  status: string;
+  data_directory: string;
+  database_location: string;
+  credentials_hidden: boolean;
+  postgres_enabled: boolean;
+  backup_supported: boolean;
+  retention: {
+    audit_days: number;
+    execution_days: number;
+    evidence_days: number;
+    evidence_minimum_runs: number;
+  };
+  backups: DatabaseBackup[];
 };
 
 type AlertStatus = {
@@ -477,6 +503,13 @@ function App() {
       unwrap(retentionResult, setRetention);
       unwrap(alertsResult, setAlerts);
 
+      const authFailure = [runResult, scheduleResult, profilesResult, manifestResult, integrationsResult, readinessResult, catalogueResult, supportResult, historyResult, retentionResult, alertsResult]
+        .find((result) => result.status === "rejected" && isAuthError(result.reason));
+      if (authFailure) {
+        expireSession();
+        return;
+      }
+
       const firstProfile = profiles?.profiles[0];
       const firstCluster = latestRun?.clusters[0];
       if (firstProfile && firstCluster) {
@@ -536,6 +569,10 @@ function App() {
     if (authToken) {
       await fetchJson<{ status: string }>("/api/v1/auth/logout", { method: "POST" }, authToken).catch(() => null);
     }
+    expireSession();
+  }
+
+  function expireSession() {
     window.sessionStorage.removeItem("cao-token");
     window.sessionStorage.removeItem("cao-user");
     setAuthToken("");
@@ -673,6 +710,7 @@ function App() {
             authToken={authToken}
             support={supportStatus}
             currentUser={currentUser}
+            onAuthExpired={expireSession}
           />
         ) : null}
       </section>
@@ -927,6 +965,7 @@ function DashboardPage(props: {
           <div><dt>API URL</dt><dd>{props.support?.api_url ?? "-"}</dd></div>
           <div><dt>Config source</dt><dd>{props.support?.config_source ?? "-"}</dd></div>
           <div><dt>Evidence storage</dt><dd>{props.support?.evidence_directory ? "Configured locally" : "-"}</dd></div>
+          <div><dt>Settings DB</dt><dd>{props.support?.admin_database ?? "-"}</dd></div>
           <div><dt>Last run type</dt><dd>{props.support?.latest_run.run_type ?? "-"}</dd></div>
           <div><dt>TLS mode</dt><dd>{props.support?.mode.tls_mode ?? "-"}</dd></div>
         </dl>
@@ -1508,8 +1547,9 @@ function SettingsPage(props: {
   authToken: string;
   support: SupportStatus | null;
   currentUser: AuthUser | null;
+  onAuthExpired: () => void;
 }) {
-  const [activeSettingsPage, setActiveSettingsPage] = useState<SettingsPageId>("connections");
+  const [activeSettingsPage, setActiveSettingsPage] = useState<SettingsPageId>("storage");
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [connections, setConnections] = useState<ManagedConnection[]>([]);
   const [connectionDraft, setConnectionDraft] = useState({
@@ -1523,6 +1563,7 @@ function SettingsPage(props: {
   const [roles, setRoles] = useState<ManagedRole[]>([]);
   const [roleDraft, setRoleDraft] = useState({ name: "", permissions: "" });
   const [users, setUsers] = useState<ManagedUser[]>([]);
+  const [storageStatus, setStorageStatus] = useState<StorageStatus | null>(null);
   const [userDraft, setUserDraft] = useState({
     username: "",
     name: "",
@@ -1550,7 +1591,7 @@ function SettingsPage(props: {
   async function loadAdminState() {
     setSettingsError(null);
     try {
-      const [roleRows, userRows, connectionRows, auditRows] = await Promise.all([
+      const [roleRows, userRows, connectionRows, auditRows, storageRows] = await Promise.all([
         fetchJson<Array<{ id: string; name: string; permissions: string[] }>>("/api/v1/rbac/roles", {}, props.authToken),
         fetchJson<Array<{
           id: string;
@@ -1574,7 +1615,8 @@ function SettingsPage(props: {
           status: string;
           last_checked_at: string | null;
         }>>("/api/v1/connections", {}, props.authToken),
-        fetchJson<AuditEvent[]>("/api/v1/audit/events", {}, props.authToken)
+        fetchJson<AuditEvent[]>("/api/v1/audit/events", {}, props.authToken),
+        fetchJson<StorageStatus>("/api/v1/storage/status", {}, props.authToken)
       ]);
       setRoles(roleRows.map((role) => ({ id: role.id, name: role.name, permissions: role.permissions.join(", ") })));
       setUsers(userRows.map((user) => ({
@@ -1600,9 +1642,37 @@ function SettingsPage(props: {
         lastCheckedAt: connection.last_checked_at
       })));
       setAuditEvents(auditRows);
+      setStorageStatus(storageRows);
     } catch (adminError) {
+      if (isAuthError(adminError)) {
+        props.onAuthExpired();
+        return;
+      }
       setSettingsError(adminError instanceof Error ? adminError.message : "Unable to load settings data.");
     }
+  }
+
+  async function createStorageBackup() {
+    const backup = await fetchJson<DatabaseBackup>("/api/v1/storage/backups", { method: "POST" }, props.authToken);
+    setSettingsError(`Created database backup ${backup.name}.`);
+    await loadAdminState();
+  }
+
+  async function downloadStorageBackup(backupName: string) {
+    const blob = await fetchBlob(`/api/v1/storage/backups/${encodeURIComponent(backupName)}/download`, props.authToken);
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = backupName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  }
+
+  async function showStorageBackupDetails(backupName: string) {
+    const details = await fetchJson<DatabaseBackup & { storage: string }>(`/api/v1/storage/backups/${encodeURIComponent(backupName)}`, {}, props.authToken);
+    setSettingsError(`${details.name}: ${details.size_label ?? formatBytes(details.size_bytes)} stored in ${details.storage}.`);
   }
 
   async function addConnection() {
@@ -1733,6 +1803,7 @@ function SettingsPage(props: {
   }
 
   const settingsPages: Array<{ id: SettingsPageId; label: string; icon: React.ComponentType<{ size?: number }> }> = [
+    { id: "storage", label: "Storage", icon: Database },
     { id: "connections", label: "Connections", icon: Network },
     { id: "readiness", label: "Readiness Gates", icon: ShieldCheck },
     { id: "rbac", label: "RBAC Matrix", icon: Users },
@@ -1743,12 +1814,6 @@ function SettingsPage(props: {
 
   return (
     <section className="settings-shell">
-      <div className="settings-overview-grid">
-        <RunVisualCard label="Connections" value={connections.length.toString()} status={connections.some((connection) => connection.status === "READY") ? "HEALTHY" : "UNKNOWN"} detail={`${connections.filter((connection) => connection.status === "READY").length} ready`} />
-        <RunVisualCard label="RBAC" value={`${users.length} user(s)`} status={users.length ? "HEALTHY" : "WARNING"} detail={`${roles.length} role(s) configured`} />
-        <RunVisualCard label="NCC Gate" value={`${selectedNccCheckIds.length}`} status={props.nccPlan?.ncc_enabled ? "HEALTHY" : "UNKNOWN"} detail={props.nccPlan?.reason ?? "Execution gated"} />
-        <RunVisualCard label="Audit" value={auditEvents.length.toString()} status={auditEvents.length ? "HEALTHY" : "UNKNOWN"} detail="Administrative event trail" />
-      </div>
       <div className="settings-nav" aria-label="Settings sections">
         {settingsPages.map((page) => {
           const Icon = page.icon;
@@ -1765,8 +1830,23 @@ function SettingsPage(props: {
           );
         })}
       </div>
+      <div className="settings-overview-grid">
+        <RunVisualCard label="Connections" value={connections.length.toString()} status={connections.some((connection) => connection.status === "READY") ? "HEALTHY" : "UNKNOWN"} detail={`${connections.filter((connection) => connection.status === "READY").length} ready`} />
+        <RunVisualCard label="RBAC" value={`${users.length} user(s)`} status={users.length ? "HEALTHY" : "WARNING"} detail={`${roles.length} role(s) configured`} />
+        <RunVisualCard label="NCC Gate" value={`${selectedNccCheckIds.length}`} status={props.nccPlan?.ncc_enabled ? "HEALTHY" : "UNKNOWN"} detail={props.nccPlan?.reason ?? "Execution gated"} />
+        <RunVisualCard label="Audit" value={auditEvents.length.toString()} status={auditEvents.length ? "HEALTHY" : "UNKNOWN"} detail="Administrative event trail" />
+      </div>
       {settingsError ? <Banner tone="unknown" message={settingsError} /> : null}
 
+      {activeSettingsPage === "storage" ? (
+        <StorageSettingsPage
+          status={storageStatus}
+          onRefresh={loadAdminState}
+          onCreateBackup={createStorageBackup}
+          onDownloadBackup={downloadStorageBackup}
+          onBackupDetails={showStorageBackupDetails}
+        />
+      ) : null}
       {activeSettingsPage === "connections" ? (
         <ConnectionsPage
           report={props.integrations}
@@ -1825,6 +1905,102 @@ function SettingsPage(props: {
   );
 }
 
+function StorageSettingsPage(props: {
+  status: StorageStatus | null;
+  onRefresh: () => void | Promise<void>;
+  onCreateBackup: () => void | Promise<void>;
+  onDownloadBackup: (backupName: string) => void | Promise<void>;
+  onBackupDetails: (backupName: string) => void | Promise<void>;
+}) {
+  const backupSupported = props.status?.backup_supported ?? false;
+  return (
+    <section className="storage-settings">
+      <div className="storage-settings-grid">
+        <article className="panel storage-card">
+          <div className="storage-card-heading">
+            <div className="storage-card-icon"><Database size={18} /></div>
+            <div>
+              <h2>Storage Backend</h2>
+              <p>Current persistence mode and state location</p>
+            </div>
+          </div>
+          <dl className="storage-fields">
+            <div><dt>Backend</dt><dd>{props.status?.backend ?? "-"}</dd></div>
+            <div><dt>Status</dt><dd>{props.status?.status ?? "-"}</dd></div>
+            <div><dt>Data Directory</dt><dd>{props.status?.data_directory ?? "-"}</dd></div>
+            <div><dt>Database Location</dt><dd className="mono">{props.status?.database_location ?? "-"}</dd></div>
+          </dl>
+          <div className="storage-card-actions">
+            <button className="secondary-button" type="button" onClick={props.onRefresh}>
+              <RefreshCw size={16} />
+              Refresh
+            </button>
+            <span>Database credentials are intentionally hidden.</span>
+          </div>
+        </article>
+
+        <article className="panel storage-card">
+          <div className="storage-card-heading">
+            <div className="storage-card-icon"><FileJson size={18} /></div>
+            <div>
+              <h2>Retention</h2>
+              <p>Operational history retention settings</p>
+            </div>
+          </div>
+          <dl className="storage-fields">
+            <div><dt>Audit Retention</dt><dd>{props.status ? `${props.status.retention.audit_days} days` : "-"}</dd></div>
+            <div><dt>Execution Retention</dt><dd>{props.status ? `${props.status.retention.execution_days} days` : "-"}</dd></div>
+            <div><dt>Evidence Retention</dt><dd>{props.status ? `${props.status.retention.evidence_days} days` : "-"}</dd></div>
+            <div><dt>Minimum Evidence Runs</dt><dd>{props.status?.retention.evidence_minimum_runs ?? "-"}</dd></div>
+          </dl>
+          <p className="storage-note">Change storage and retention values with environment variables, then restart the service.</p>
+        </article>
+      </div>
+
+      <article className="panel storage-backups">
+        <div className="storage-backup-heading">
+          <div className="storage-card-heading">
+            <div className="storage-card-icon"><Download size={18} /></div>
+            <div>
+              <h2>Database Backups</h2>
+              <p>Admin-only PostgreSQL logical exports</p>
+            </div>
+          </div>
+          <div className="toolbar">
+            <button className="secondary-button" type="button" onClick={props.onRefresh}>
+              <RefreshCw size={16} />
+              Refresh
+            </button>
+            <button className="primary-button" type="button" onClick={props.onCreateBackup} disabled={!backupSupported}>
+              <Database size={16} />
+              Create Backup
+            </button>
+          </div>
+        </div>
+        <p>Create an on-demand PostgreSQL backup for Docker and small-team deployments. Managed PostgreSQL platforms should still use native automated backups.</p>
+        {!backupSupported ? <Banner tone="warning" message="PostgreSQL backups are available when the appliance settings database is running on Postgres." /> : null}
+        <div className="backup-list">
+          {props.status?.backups.length ? props.status.backups.map((backup) => (
+            <div className="backup-row" key={backup.name}>
+              <div>
+                <strong>{backup.name}</strong>
+                <span>{formatDateTime(backup.created_at)} - {backup.size_label}</span>
+              </div>
+              <div className="toolbar">
+                <button className="secondary-button" type="button" onClick={() => props.onDownloadBackup(backup.name)}>
+                  <Download size={16} />
+                  Download
+                </button>
+                <button className="secondary-button" type="button" onClick={() => props.onBackupDetails(backup.name)}>Details</button>
+              </div>
+            </div>
+          )) : <div className="empty-state">No database backups created yet.</div>}
+        </div>
+      </article>
+    </section>
+  );
+}
+
 function AboutPage(props: {
   support: SupportStatus | null;
   currentUser: AuthUser | null;
@@ -1844,7 +2020,8 @@ function AboutPage(props: {
     containerImage: "not reported",
     apiUrl: props.support?.api_url ?? "not reported",
     configSource: props.support?.config_source ?? "not reported",
-    evidenceStorage: props.support?.evidence_directory ? "configured locally" : "not reported"
+    evidenceStorage: props.support?.evidence_directory ? "configured locally" : "not reported",
+    settingsDatabase: props.support?.admin_database ?? "not reported"
   };
 
   async function copyBuildInfo() {
@@ -1885,6 +2062,7 @@ function AboutPage(props: {
         <div><dt>API URL</dt><dd>{buildInfo.apiUrl}</dd></div>
         <div><dt>Config Source</dt><dd>{buildInfo.configSource}</dd></div>
         <div><dt>Evidence Storage</dt><dd>{buildInfo.evidenceStorage}</dd></div>
+        <div><dt>Settings Database</dt><dd>{buildInfo.settingsDatabase}</dd></div>
         <div><dt>Project</dt><dd>Cluster Assurance Orchestrator</dd></div>
         <div><dt>Supported Scope</dt><dd>Read-only Prism evidence; NCC execution gated</dd></div>
         <div><dt>Signed In As</dt><dd>{props.currentUser?.username ?? "not reported"}</dd></div>
@@ -2555,6 +2733,25 @@ async function fetchJson<T>(path: string, init: RequestInit = {}, token = ""): P
   return response.json() as Promise<T>;
 }
 
+async function fetchBlob(path: string, token = ""): Promise<Blob> {
+  const headers = new Headers();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  const response = await fetch(`${API_BASE}${path}`, { headers });
+  if (!response.ok) {
+    let detail = `${path} returned HTTP ${response.status}`;
+    try {
+      const payload = await response.json() as { detail?: string };
+      detail = payload.detail ?? detail;
+    } catch {
+      // Keep the HTTP fallback when the server did not return JSON.
+    }
+    throw new Error(detail);
+  }
+  return response.blob();
+}
+
 function unwrap<T>(
   result: PromiseSettledResult<T>,
   setter: React.Dispatch<React.SetStateAction<T | null>>
@@ -2567,8 +2764,32 @@ function unwrap<T>(
   return null;
 }
 
+function isAuthError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return /invalid or expired session|bearer token required|http 401/i.test(error.message);
+}
+
 function labelize(value: string) {
   return value.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) {
+    return "-";
+  }
+  return new Date(value).toLocaleString();
+}
+
+function formatBytes(size: number) {
+  if (size < 1024) {
+    return `${size} B`;
+  }
+  if (size < 1024 * 1024) {
+    return `${Math.round(size / 1024)} KB`;
+  }
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function scheduleStatusTone(value: string) {

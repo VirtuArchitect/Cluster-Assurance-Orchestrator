@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from app.adapters.nutanix import AdapterDisabledError
@@ -24,6 +25,7 @@ from app.services.support_status import build_support_status
 from app.services.alerting import alert_status, send_test_alert
 from app.services.artifacts import public_artifact_ref
 from app.services.admin_store import AdminStore, Principal
+from app.services.storage_ops import create_database_backup, format_bytes as format_file_size, get_database_backup, storage_status
 
 router = APIRouter()
 
@@ -597,6 +599,62 @@ def evidence_retention(
     actor: Annotated[Principal, Depends(require_admin)],
 ) -> dict[str, Any]:
     return retention_report(request.app.state.settings)
+
+
+@router.get("/storage/status")
+def admin_storage_status(
+    request: Request,
+    store: Annotated[AdminStore, Depends(admin_store)],
+    _: Annotated[Principal, Depends(require_admin)],
+) -> dict[str, Any]:
+    return storage_status(request.app.state.settings, store)
+
+
+@router.post("/storage/backups")
+def admin_storage_backup_create(
+    request: Request,
+    actor: Annotated[Principal, Depends(require_admin)],
+    store: Annotated[AdminStore, Depends(admin_store)],
+) -> dict[str, Any]:
+    try:
+        backup = create_database_backup(request.app.state.settings, store)
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    store.audit("storage.backup_created", actor.user_id, "database_backup", backup["name"], {"size_bytes": backup["size_bytes"]})
+    return backup
+
+
+@router.get("/storage/backups/{backup_name}")
+def admin_storage_backup_detail(
+    backup_name: str,
+    request: Request,
+    _: Annotated[Principal, Depends(require_admin)],
+) -> dict[str, Any]:
+    try:
+        path = get_database_backup(request.app.state.settings, backup_name)
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=404, detail="Backup not found") from error
+    stat = path.stat()
+    return {
+        "name": path.name,
+        "size_bytes": stat.st_size,
+        "size_label": format_file_size(stat.st_size),
+        "created_at": datetime.fromtimestamp(stat.st_mtime, UTC).isoformat(),
+        "storage": "configured locally",
+    }
+
+
+@router.get("/storage/backups/{backup_name}/download")
+def admin_storage_backup_download(
+    backup_name: str,
+    request: Request,
+    _: Annotated[Principal, Depends(require_admin)],
+) -> FileResponse:
+    try:
+        path = get_database_backup(request.app.state.settings, backup_name)
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=404, detail="Backup not found") from error
+    return FileResponse(path, media_type="application/sql", filename=path.name)
 
 
 @router.post("/evidence/retention/prune")

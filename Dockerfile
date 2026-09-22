@@ -18,7 +18,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     CAO_ENABLE_NCC=false \
     CAO_ENABLE_SSH=false \
     CAO_EVIDENCE_DIR=/data/evidence \
-    CAO_ADMIN_DB_PATH=/data/cao-admin.sqlite3
+    CAO_ADMIN_DATABASE_URL=postgresql://cao:cao-local-dev-password@postgres:5432/cao
 
 WORKDIR /app
 COPY pyproject.toml README.md ./

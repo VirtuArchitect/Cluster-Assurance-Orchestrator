@@ -18,6 +18,7 @@ from urllib.request import Request, urlopen
 
 from app.core.config import Settings
 from app.domain.scheduling import ScheduleDefinition
+from app.services.artifacts import public_artifact_ref
 from app.services.scheduling import default_profile
 
 
@@ -965,7 +966,7 @@ def serialize_schedule_run_row(row: sqlite3.Row) -> dict[str, Any]:
         "started_at": row["started_at"],
         "completed_at": row["completed_at"],
         "run_id": row["run_id"],
-        "evidence_path": row["evidence_path"],
+        "evidence_path": public_artifact_ref(row["evidence_path"]),
         "message": row["message"],
         "actor_id": row["actor_id"],
     }

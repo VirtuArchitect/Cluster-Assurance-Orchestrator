@@ -8,7 +8,7 @@ from uuid import uuid4
 from app.adapters.nutanix import NutanixReadOnlyAdapter
 from app.core.config import Settings
 from app.domain.inventory import InventoryRunReport
-from app.services.artifacts import hash_file
+from app.services.artifacts import hash_file, public_artifact_ref
 
 
 def run_inventory(settings: Settings) -> InventoryRunReport:
@@ -60,6 +60,7 @@ def inventory_run_history(evidence_dir: str | Path, limit: int = 20) -> list[dic
             {
                 "source": collector.get("source"),
                 "endpoint_alias": collector.get("endpoint_alias"),
+                "domain": collector.get("domain", "inventory"),
                 "status": collector.get("status"),
                 "status_code": collector.get("status_code"),
                 "summary": collector.get("summary"),
@@ -74,7 +75,7 @@ def inventory_run_history(evidence_dir: str | Path, limit: int = 20) -> list[dic
                 "status": payload.get("status", "UNKNOWN"),
                 "generated_at": generated_at or None,
                 "age_seconds": int((datetime.now(UTC) - parsed_generated_at).total_seconds()) if parsed_generated_at else None,
-                "path": str(path),
+                "path": public_artifact_ref(path),
                 "cluster_count": len(payload.get("clusters", [])) if isinstance(payload.get("clusters"), list) else 0,
                 "collector_count": len(collectors),
                 "collector_failure_count": len(failures),

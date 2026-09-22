@@ -140,11 +140,15 @@ def test_inventory_run_collects_and_normalizes_clusters(
         b'"spec":{"name":"PC Cluster"},"status":{"resources":{"version":"6.8"}}}]}'
     )
     pe_body = b'{"cluster_uuid":"pe-cluster-1","name":"PE Cluster","version":"6.8"}'
+    domain_body = b'{"entities":[{"metadata":{"uuid":"domain-1"},"spec":{"name":"domain item"}}]}'
 
     def fake_urlopen(request, timeout, context):  # noqa: ANN001
         if "/api/nutanix/v3/clusters/list" in request.full_url:
             assert request.get_method() == "POST"
             return InventoryFakeResponse(pc_body)
+        if request.full_url.startswith("https://pc.example.invalid:9440/api/nutanix/v3/"):
+            assert request.get_method() == "POST"
+            return InventoryFakeResponse(domain_body)
         assert request.get_method() == "GET"
         return InventoryFakeResponse(pe_body)
 
@@ -167,6 +171,7 @@ def test_inventory_run_collects_and_normalizes_clusters(
     assert len(report.clusters) == 2
     assert {cluster.name for cluster in report.clusters} == {"PC Cluster", "PE Cluster"}
     assert all(collector.raw_artifact for collector in report.collectors)
+    assert {collector.domain for collector in report.collectors} == {"inventory", "storage", "hardware", "network", "capacity"}
 
 
 def test_prism_element_inventory_falls_back_to_v3_cluster_list(
@@ -181,9 +186,11 @@ def test_prism_element_inventory_falls_back_to_v3_cluster_list(
     def fake_urlopen(request, timeout, context):  # noqa: ANN001
         if "/PrismGateway/services/rest/v2.0/cluster/" in request.full_url:
             raise HTTPError(request.full_url, 401, "Unauthorized", hdrs=None, fp=None)
-        assert "/api/nutanix/v3/clusters/list" in request.full_url
-        assert request.get_method() == "POST"
-        return InventoryFakeResponse(pe_v3_body)
+        if "/api/nutanix/v3/clusters/list" in request.full_url:
+            assert request.get_method() == "POST"
+            return InventoryFakeResponse(pe_v3_body)
+        assert request.get_method() == "GET"
+        return InventoryFakeResponse(b'{"entities":[{"metadata":{"uuid":"domain-1"}}]}')
 
     monkeypatch.setattr("app.adapters.nutanix.urlopen", fake_urlopen)
     settings = Settings(
@@ -197,9 +204,10 @@ def test_prism_element_inventory_falls_back_to_v3_cluster_list(
 
     report = NutanixReadOnlyAdapter(settings).collect_inventory(run_id="pe-fallback-run")
 
-    assert report.status == HealthStatus.HEALTHY
+    assert report.status == HealthStatus.WARNING
     assert report.collectors[0].status == HealthStatus.HEALTHY
     assert report.clusters[0].name == "PE Cluster"
+    assert any(collector.domain == "capacity" and collector.status == HealthStatus.UNKNOWN for collector in report.collectors)
 
 
 def test_inventory_run_empty_payload_is_unknown(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
@@ -218,3 +226,39 @@ def test_inventory_run_empty_payload_is_unknown(monkeypatch: pytest.MonkeyPatch,
 
     assert report.status == HealthStatus.UNKNOWN
     assert report.collectors[0].status == HealthStatus.UNKNOWN
+
+
+def test_domain_collectors_use_configured_prism_connections(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    calls = []
+    pc_cluster_body = (
+        b'{"entities":[{"metadata":{"uuid":"pc-cluster-1"},'
+        b'"spec":{"name":"PC Cluster"},"status":{"resources":{"version":"6.8"}}}]}'
+    )
+    domain_body = b'{"entities":[{"metadata":{"uuid":"domain-1"}}]}'
+
+    def fake_urlopen(request, timeout, context):  # noqa: ANN001
+        calls.append((request.full_url, request.get_method(), request.headers.get("Authorization")))
+        if "/api/nutanix/v3/clusters/list" in request.full_url:
+            return InventoryFakeResponse(pc_cluster_body)
+        return InventoryFakeResponse(domain_body)
+
+    monkeypatch.setattr("app.adapters.nutanix.urlopen", fake_urlopen)
+    settings = Settings(
+        demo_mode=False,
+        read_only_mode=True,
+        pc_url="https://pc.example.invalid:9440/",
+        pc_username="admin",
+        pc_password="secret",
+        evidence_dir=str(tmp_path),
+    )
+
+    report = NutanixReadOnlyAdapter(settings).collect_inventory(run_id="domain-run")
+
+    domains = {collector.domain for collector in report.collectors}
+    assert {"inventory", "storage", "hardware", "network", "capacity"}.issubset(domains)
+    assert all(collector.raw_artifact for collector in report.collectors)
+    assert all(auth_header for _, _, auth_header in calls)
+    called_urls = "\n".join(url for url, _, _ in calls)
+    assert "/api/nutanix/v3/storage_containers/list" in called_urls
+    assert "/api/nutanix/v3/hosts/list" in called_urls
+    assert "/api/nutanix/v3/subnets/list" in called_urls

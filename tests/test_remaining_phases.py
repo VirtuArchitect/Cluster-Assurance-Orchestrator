@@ -121,6 +121,9 @@ def test_support_status_reports_runtime_context(tmp_path) -> None:
     payload = response.json()
     assert payload["mode"]["demo_mode"] is True
     assert payload["latest_run"]["run_id"] == "run-1"
+    assert payload["evidence_directory"] == "configured locally"
+    assert "\\" not in payload["latest_run"]["path"]
+    assert str(tmp_path) not in str(payload)
     assert any("Demo mode" in warning for warning in payload["warnings"])
 
 
@@ -162,6 +165,10 @@ def test_evidence_archive_and_restore_drill(tmp_path) -> None:
     assert retention.status_code == 200
     assert archive.status_code == 200
     assert archive.json()["sha256"]
+    assert retention.json()["evidence_dir"] == "configured locally"
+    assert "\\" not in archive.json()["archive_path"]
+    assert str(tmp_path) not in str(retention.json())
+    assert str(tmp_path) not in str(archive.json())
     assert drill.status_code == 200
     assert drill.json()["status"] == "PASS"
 

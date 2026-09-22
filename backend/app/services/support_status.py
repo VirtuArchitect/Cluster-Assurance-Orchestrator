@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.config import Settings
+from app.services.artifacts import public_artifact_ref
 
 
 def build_support_status(settings: Settings, api_url: str) -> dict[str, Any]:
@@ -21,8 +22,8 @@ def build_support_status(settings: Settings, api_url: str) -> dict[str, Any]:
         },
         "api_url": api_url,
         "config_source": settings.config_source,
-        "evidence_directory": str(Path(settings.evidence_dir).resolve()),
-        "admin_database": str(Path(settings.admin_db_path).resolve()) if settings.admin_db_path else str((Path(settings.evidence_dir) / "cao-admin.sqlite3").resolve()),
+        "evidence_directory": "configured locally",
+        "admin_database": "configured locally",
         "latest_run": latest,
         "collector_failures": latest.get("collector_failures", []),
         "warnings": runtime_warnings(settings, latest),
@@ -55,6 +56,7 @@ def latest_run_summary(evidence_dir: str | Path) -> dict[str, Any]:
         {
             "source": collector.get("source"),
             "endpoint_alias": collector.get("endpoint_alias"),
+            "domain": collector.get("domain", "inventory"),
             "status": collector.get("status"),
             "status_code": collector.get("status_code"),
             "summary": collector.get("summary"),
@@ -69,7 +71,7 @@ def latest_run_summary(evidence_dir: str | Path) -> dict[str, Any]:
         "status": payload.get("status", "UNKNOWN"),
         "generated_at": generated_at or None,
         "age_seconds": int((datetime.now(UTC) - parsed_generated_at).total_seconds()) if parsed_generated_at else None,
-        "path": str(path),
+        "path": public_artifact_ref(path),
         "collector_failures": collector_failures,
     }
 

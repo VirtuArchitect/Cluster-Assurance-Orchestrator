@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.domain.evidence import EvidenceArtifact, EvidenceManifest
-from app.services.artifacts import hash_file
+from app.services.artifacts import hash_file, public_artifact_ref
 from app.services.inventory_run import read_latest_inventory_evidence
 
 
@@ -21,7 +21,7 @@ def latest_manifest(evidence_dir: str | Path) -> EvidenceManifest | None:
         artifacts.append(
             EvidenceArtifact(
                 artifact_type="raw_collector_response",
-                uri=str(raw.get("uri", "")),
+                uri=public_artifact_ref(str(raw.get("uri", ""))) or "",
                 sha256=str(raw.get("sha256", "")),
                 size_bytes=int(raw.get("size_bytes", 0)),
             )
@@ -32,7 +32,7 @@ def latest_manifest(evidence_dir: str | Path) -> EvidenceManifest | None:
         artifacts.append(
             EvidenceArtifact(
                 artifact_type="normalized_inventory_run",
-                uri=str(evidence_path),
+                uri=public_artifact_ref(evidence_path) or "",
                 sha256=hash_file(evidence_path),
                 size_bytes=evidence_path.stat().st_size,
             )

@@ -35,12 +35,14 @@ class ClusterInventoryItem(BaseModel):
 class InventoryCollectorResult(BaseModel):
     source: InventorySource
     endpoint_alias: str
+    domain: str = "inventory"
     status: HealthStatus
     summary: str
     path: str
     method: str
     status_code: int | None = None
     elapsed_ms: int | None = None
+    item_count: int | None = None
     clusters: list[ClusterInventoryItem] = Field(default_factory=list)
     raw_artifact: RawArtifactRef | None = None
     error: str | None = None
@@ -78,4 +80,3 @@ class InventoryRunReport(BaseModel):
         payload["status"] = self.status
         payload["clusters"] = [cluster.model_dump(mode="json") for cluster in self.clusters]
         return payload
-

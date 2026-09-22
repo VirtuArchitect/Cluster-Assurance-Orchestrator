@@ -7,7 +7,7 @@ import zipfile
 from typing import Any
 
 from app.core.config import Settings
-from app.services.artifacts import hash_file
+from app.services.artifacts import hash_file, public_artifact_ref
 
 
 def retention_report(settings: Settings) -> dict[str, Any]:
@@ -19,10 +19,10 @@ def retention_report(settings: Settings) -> dict[str, Any]:
             "retention_days": settings.evidence_retention_days,
             "minimum_runs": settings.evidence_retention_min_runs,
         },
-        "evidence_dir": str(Path(settings.evidence_dir).resolve()),
+        "evidence_dir": "configured locally",
         "inventory_runs": len(files),
         "deletable_runs": len(deletable),
-        "deletable_files": [str(path) for path in deletable],
+        "deletable_files": [public_artifact_ref(path) for path in deletable],
     }
 
 
@@ -33,7 +33,7 @@ def prune_evidence(settings: Settings) -> dict[str, Any]:
     deleted: list[str] = []
     for path in deletable:
         path.unlink(missing_ok=True)
-        deleted.append(str(path))
+        deleted.append(public_artifact_ref(path) or "local-evidence-artifact")
     return retention_report(settings) | {"deleted_files": deleted}
 
 
@@ -49,7 +49,7 @@ def create_evidence_archive(settings: Settings) -> dict[str, Any]:
             if path.is_file() and archive_path not in path.parents and path != archive_path:
                 archive.write(path, path.relative_to(root))
     return {
-        "archive_path": str(archive_path),
+        "archive_path": public_artifact_ref(archive_path),
         "sha256": hash_file(archive_path),
         "size_bytes": archive_path.stat().st_size,
     }
@@ -59,11 +59,11 @@ def restore_drill(settings: Settings) -> dict[str, Any]:
     root = Path(settings.evidence_dir)
     archives = sorted((root / "archives").glob("cao-evidence-*.zip"), reverse=True)
     archive_payload = create_evidence_archive(settings) if not archives else {
-        "archive_path": str(archives[0]),
+        "archive_path": public_artifact_ref(archives[0]),
         "sha256": hash_file(archives[0]),
         "size_bytes": archives[0].stat().st_size,
     }
-    archive_path = Path(archive_payload["archive_path"])
+    archive_path = archives[0] if archives else Path(settings.evidence_dir) / "archives" / str(archive_payload["archive_path"])
     with zipfile.ZipFile(archive_path) as archive:
         names = archive.namelist()
         invalid_json = [

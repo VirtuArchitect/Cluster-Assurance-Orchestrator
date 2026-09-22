@@ -81,6 +81,8 @@ def test_health_run_history_summarizes_recent_evidence(tmp_path) -> None:
     assert payload[0]["cluster_count"] == 1
     assert payload[0]["collector_failure_count"] == 1
     assert payload[0]["collector_failures"][0]["status_code"] == 401
+    assert payload[0]["path"] == "inventory-run-20260101T000000Z.json"
+    assert str(tmp_path) not in str(payload)
 
 
 def test_default_schedule_preview_uses_latest_inventory_targets(tmp_path) -> None:

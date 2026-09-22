@@ -44,6 +44,15 @@ class EndpointConfig:
     password: str
 
 
+@dataclass(frozen=True)
+class DomainCollectorSpec:
+    domain: str
+    check_id: str
+    path: str
+    method: str
+    kind: str | None = None
+
+
 class NutanixReadOnlyAdapter:
     """Read-only Prism discovery boundary.
 
@@ -109,6 +118,18 @@ class NutanixReadOnlyAdapter:
                     evidence_ref=result.raw_artifact.uri if result.raw_artifact else None,
                 )
             )
+            for domain_result in self._collect_domain_inventory(endpoint, run_id):
+                collectors.append(domain_result)
+                observations.append(
+                    Observation(
+                        check_id=domain_check_id(domain_result.domain),
+                        status=domain_observation_status(domain_result.status),
+                        source=domain_result.source,
+                        summary=domain_result.summary,
+                        mandatory=False,
+                        evidence_ref=domain_result.raw_artifact.uri if domain_result.raw_artifact else None,
+                    )
+                )
 
         if not collectors:
             observations.append(
@@ -236,6 +257,114 @@ class NutanixReadOnlyAdapter:
             if fallback.status != HealthStatus.UNKNOWN:
                 return fallback
         return result
+
+    def _collect_domain_inventory(self, endpoint: EndpointConfig, run_id: str) -> list[InventoryCollectorResult]:
+        specs = (
+            pc_domain_collectors()
+            if endpoint.kind == EndpointKind.PRISM_CENTRAL
+            else pe_domain_collectors()
+        )
+        source = InventorySource.PRISM_CENTRAL if endpoint.kind == EndpointKind.PRISM_CENTRAL else InventorySource.PRISM_ELEMENT
+        return [self._collect_domain(endpoint, run_id, source, spec) for spec in specs]
+
+    def _collect_domain(
+        self,
+        endpoint: EndpointConfig,
+        run_id: str,
+        source: InventorySource,
+        spec: DomainCollectorSpec,
+    ) -> InventoryCollectorResult:
+        body = None
+        if spec.method == "POST":
+            body = json.dumps({"kind": spec.kind, "length": 100, "offset": 0}).encode("utf-8")
+        response = self._request(endpoint, spec.method, spec.path, body=body)
+        return self._domain_result_from_response(endpoint, run_id, source, spec, response)
+
+    def _domain_result_from_response(
+        self,
+        endpoint: EndpointConfig,
+        run_id: str,
+        source: InventorySource,
+        spec: DomainCollectorSpec,
+        response: "HttpResponse",
+    ) -> InventoryCollectorResult:
+        raw_artifact = None
+        if response.body:
+            artifact_path, artifact_hash = write_raw_artifact(
+                self.settings.evidence_dir,
+                run_id,
+                source,
+                spec.domain,
+                response.body,
+            )
+            raw_artifact = RawArtifactRef(
+                source=source,
+                path=spec.path,
+                method=spec.method,
+                sha256=artifact_hash,
+                size_bytes=len(response.body),
+                uri=str(artifact_path),
+            )
+
+        if response.error:
+            return InventoryCollectorResult(
+                source=source,
+                endpoint_alias=endpoint.alias,
+                domain=spec.domain,
+                status=HealthStatus.UNKNOWN,
+                summary=f"{endpoint.alias} {spec.domain} collector failed: {response.error}",
+                path=spec.path,
+                method=spec.method,
+                status_code=response.status_code,
+                elapsed_ms=response.elapsed_ms,
+                raw_artifact=raw_artifact,
+                error=response.error,
+            )
+
+        if response.status_code and not 200 <= response.status_code < 300:
+            return InventoryCollectorResult(
+                source=source,
+                endpoint_alias=endpoint.alias,
+                domain=spec.domain,
+                status=HealthStatus.UNKNOWN,
+                summary=f"{endpoint.alias} {spec.domain} collector returned HTTP {response.status_code}.",
+                path=spec.path,
+                method=spec.method,
+                status_code=response.status_code,
+                elapsed_ms=response.elapsed_ms,
+                raw_artifact=raw_artifact,
+            )
+
+        try:
+            item_count = count_payload_items(response.body)
+        except (ValueError, TypeError, json.JSONDecodeError) as error:
+            return InventoryCollectorResult(
+                source=source,
+                endpoint_alias=endpoint.alias,
+                domain=spec.domain,
+                status=HealthStatus.UNKNOWN,
+                summary=f"{endpoint.alias} {spec.domain} payload could not be interpreted.",
+                path=spec.path,
+                method=spec.method,
+                status_code=response.status_code,
+                elapsed_ms=response.elapsed_ms,
+                raw_artifact=raw_artifact,
+                error=type(error).__name__,
+            )
+
+        return InventoryCollectorResult(
+            source=source,
+            endpoint_alias=endpoint.alias,
+            domain=spec.domain,
+            status=HealthStatus.HEALTHY,
+            summary=f"{endpoint.alias} {spec.domain} collector captured {item_count} record(s).",
+            path=spec.path,
+            method=spec.method,
+            status_code=response.status_code,
+            elapsed_ms=response.elapsed_ms,
+            item_count=item_count,
+            raw_artifact=raw_artifact,
+        )
 
     def _inventory_result_from_response(
         self,
@@ -474,3 +603,98 @@ class HttpResponse:
     content_type: str | None = None
     body: bytes = b""
     error: str | None = None
+
+
+def pc_domain_collectors() -> list[DomainCollectorSpec]:
+    return [
+        DomainCollectorSpec(
+            domain="storage",
+            check_id="HC-STORAGE",
+            path="/api/nutanix/v3/storage_containers/list",
+            method="POST",
+            kind="storage_container",
+        ),
+        DomainCollectorSpec(
+            domain="hardware",
+            check_id="HC-HARDWARE",
+            path="/api/nutanix/v3/hosts/list",
+            method="POST",
+            kind="host",
+        ),
+        DomainCollectorSpec(
+            domain="network",
+            check_id="HC-NETWORK",
+            path="/api/nutanix/v3/subnets/list",
+            method="POST",
+            kind="subnet",
+        ),
+        DomainCollectorSpec(
+            domain="capacity",
+            check_id="HC-CAPACITY",
+            path="/api/nutanix/v3/clusters/list",
+            method="POST",
+            kind="cluster",
+        ),
+    ]
+
+
+def pe_domain_collectors() -> list[DomainCollectorSpec]:
+    return [
+        DomainCollectorSpec(
+            domain="storage",
+            check_id="HC-STORAGE",
+            path="/PrismGateway/services/rest/v2.0/storage_containers/",
+            method="GET",
+        ),
+        DomainCollectorSpec(
+            domain="hardware",
+            check_id="HC-HARDWARE",
+            path="/PrismGateway/services/rest/v2.0/hosts/",
+            method="GET",
+        ),
+        DomainCollectorSpec(
+            domain="network",
+            check_id="HC-NETWORK",
+            path="/PrismGateway/services/rest/v2.0/networks/",
+            method="GET",
+        ),
+        DomainCollectorSpec(
+            domain="capacity",
+            check_id="HC-CAPACITY",
+            path="/PrismGateway/services/rest/v2.0/cluster/",
+            method="GET",
+        ),
+    ]
+
+
+def domain_check_id(domain: str) -> str:
+    return {
+        "storage": "HC-STORAGE",
+        "hardware": "HC-HARDWARE",
+        "network": "HC-NETWORK",
+        "capacity": "HC-CAPACITY",
+    }.get(domain, "HC-DOMAIN")
+
+
+def domain_observation_status(status: HealthStatus) -> HealthStatus:
+    if status == HealthStatus.HEALTHY:
+        return HealthStatus.HEALTHY
+    if status == HealthStatus.CRITICAL:
+        return HealthStatus.CRITICAL
+    return HealthStatus.WARNING
+
+
+def count_payload_items(body: bytes) -> int:
+    payload = json.loads(body.decode("utf-8")) if body else {}
+    if isinstance(payload, list):
+        return len(payload)
+    if not isinstance(payload, dict):
+        return 1
+    entities = payload.get("entities")
+    if isinstance(entities, list):
+        return len(entities)
+    for key in ("storage_containers", "hosts", "entities", "networks", "subnets", "items"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            return len(value)
+    return 1 if payload else 0

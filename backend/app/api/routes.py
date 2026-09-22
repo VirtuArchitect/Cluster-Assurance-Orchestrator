@@ -22,6 +22,7 @@ from app.services.integrations import integration_status
 from app.services.readiness import build_readiness_report
 from app.services.support_status import build_support_status
 from app.services.alerting import alert_status, send_test_alert
+from app.services.artifacts import public_artifact_ref
 from app.services.admin_store import AdminStore, Principal
 
 router = APIRouter()
@@ -92,6 +93,20 @@ def require_admin(principal: Annotated[Principal, Depends(current_principal)]) -
 def require_permission(principal: Principal, permission: str) -> None:
     if not principal.has_permission(permission):
         raise HTTPException(status_code=403, detail=f"{permission} permission required")
+
+
+def public_inventory_payload(payload: dict[str, object]) -> dict[str, object]:
+    sanitized = json.loads(json.dumps(payload))
+    for collector in sanitized.get("collectors", []):
+        if not isinstance(collector, dict):
+            continue
+        raw = collector.get("raw_artifact")
+        if isinstance(raw, dict) and raw.get("uri"):
+            raw["uri"] = public_artifact_ref(str(raw["uri"]))
+    for observation in sanitized.get("observations", []):
+        if isinstance(observation, dict) and observation.get("evidence_ref"):
+            observation["evidence_ref"] = public_artifact_ref(str(observation["evidence_ref"]))
+    return sanitized
 
 
 @router.post("/auth/login")
@@ -360,7 +375,7 @@ def lab_inventory_run(
         report = run_inventory(settings=settings)
     except AdapterDisabledError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
-    return report.api_dict()
+    return public_inventory_payload(report.api_dict())
 
 
 @router.post("/health-runs/manual")
@@ -376,7 +391,7 @@ def manual_health_run(
     except AdapterDisabledError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
     if hasattr(report, "api_dict"):
-        payload = report.api_dict()
+        payload = public_inventory_payload(report.api_dict())
         evidence_path = write_inventory_evidence(report, settings.evidence_dir)
     else:
         payload = report.model_dump(mode="json")
@@ -390,9 +405,9 @@ def manual_health_run(
         actor.user_id,
         "inventory_run",
         report.run_id,
-        {"status": str(report.status), "evidence": str(evidence_path)},
+        {"status": str(report.status), "evidence": public_artifact_ref(evidence_path)},
     )
-    return payload | {"evidence_path": str(evidence_path)}
+    return payload | {"evidence_path": public_artifact_ref(evidence_path)}
 
 
 @router.get("/lab/inventory-runs/latest")
@@ -405,7 +420,7 @@ def latest_lab_inventory_run(
     latest = read_latest_inventory_evidence(settings.evidence_dir)
     if latest is None:
         raise HTTPException(status_code=404, detail="No local inventory evidence found")
-    return latest
+    return public_inventory_payload(latest)
 
 
 @router.get("/health-runs/history")
@@ -602,7 +617,7 @@ def evidence_archive_export(
     store: Annotated[AdminStore, Depends(admin_store)],
 ) -> dict[str, Any]:
     result = create_evidence_archive(request.app.state.settings)
-    store.audit("evidence.archive_exported", actor.user_id, "evidence", "archive", {"archive_path": result["archive_path"]})
+    store.audit("evidence.archive_exported", actor.user_id, "evidence", "archive", {"archive": result["archive_path"]})
     return result
 
 

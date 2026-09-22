@@ -80,6 +80,24 @@ Run a read-only lab inventory collection:
 
 Inventory runs store raw response bodies under `evidence/lab/raw/<run-id>/` and write a normalized summary evidence file. Failed, empty, partial or unparsable mandatory collectors produce `UNKNOWN`, never `HEALTHY`.
 
+Manual and scheduled health runs now use the saved Prism connections for domain-specific read-only collectors:
+
+- inventory: cluster inventory and version evidence
+- storage: storage container/pool-facing API evidence
+- hardware: host/node-facing API evidence
+- network: subnet/network-facing API evidence
+- capacity: cluster payload evidence for later headroom calculations
+
+The domain collectors record route, method, HTTP status, item count and raw artifact references. They prove coverage first; deeper semantic thresholds for storage utilization, hardware faults, NIC/link state and capacity forecasting should be validated per Prism payload before being treated as production health rules.
+
+After a lab health run, inspect the saved Prism response shapes without printing full raw payload values:
+
+```powershell
+.\.venv\Scripts\python.exe -m app.cli.inspect_evidence_schema --env-file config/local.env
+```
+
+Use `--json` for a machine-readable summary, or `--evidence-file <path>` to inspect a specific inventory run. The report lists top-level keys, entity array location, common entity keys and candidate health/capacity fields for each collector artifact.
+
 ## Frontend Development
 
 From `frontend/`, install npm dependencies and run:

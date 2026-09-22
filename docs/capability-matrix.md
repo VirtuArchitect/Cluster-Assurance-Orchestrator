@@ -9,6 +9,10 @@ This matrix records what the application is allowed to claim for the lab. A capa
 | Prism Element HTTPS reachability | Prism Element | `GET /` | Lab reachable, HTTP 200 | `evidence/lab/lab-discovery-20260922T073520Z.json`, SHA-256 `ae1704be44f3abffef3f19c9fcd6c4bc7e0166bbdc468cd78734e08e99895ddf` |
 | Prism Element cluster details | Prism Element | `GET /PrismGateway/services/rest/v2.0/cluster/` | Protected route present, HTTP 401 | `evidence/lab/lab-discovery-20260922T073520Z.json`, SHA-256 `ae1704be44f3abffef3f19c9fcd6c4bc7e0166bbdc468cd78734e08e99895ddf` |
 | Inventory normalization | Internal | Prism Central POST cluster-list and Prism Element GET cluster details | Prism Central normalized 2 clusters; Prism Element remains UNKNOWN due HTTP 401 | `evidence/lab/inventory-run-20260922T074251Z.json`, SHA-256 `9e4ff86406224201849c4c8c4aeb7cb51dd86729e53a1e4fc2f76219c481f1e9` |
+| Storage domain collection | Prism Central / Prism Element | PC `POST /api/nutanix/v3/storage_containers/list`; PE `GET /PrismGateway/services/rest/v2.0/storage_containers/` | Implemented as read-only coverage collector with raw artifacts and item counts | Unit test `test_domain_collectors_use_configured_prism_connections` |
+| Hardware domain collection | Prism Central / Prism Element | PC `POST /api/nutanix/v3/hosts/list`; PE `GET /PrismGateway/services/rest/v2.0/hosts/` | Implemented as read-only coverage collector with raw artifacts and item counts | Unit test `test_domain_collectors_use_configured_prism_connections` |
+| Network domain collection | Prism Central / Prism Element | PC `POST /api/nutanix/v3/subnets/list`; PE `GET /PrismGateway/services/rest/v2.0/networks/` | Implemented as read-only coverage collector with raw artifacts and item counts | Unit test `test_domain_collectors_use_configured_prism_connections` |
+| Capacity domain collection | Prism Central / Prism Element | PC `POST /api/nutanix/v3/clusters/list`; PE `GET /PrismGateway/services/rest/v2.0/cluster/` | Implemented as read-only coverage collector; semantic headroom thresholds remain planned | Unit test `test_domain_collectors_use_configured_prism_connections` |
 | NCC selected daily profile | SSH/NCC | Allowlisted command profile `full-run-all` -> `ncc health_checks run_all` | Gate implemented; transport not implemented | Unit tests and `/api/v1/ncc/profiles`, `/api/v1/ncc/plan`, `/api/v1/ncc/parse` |
 | Evidence manifest | Internal | Latest inventory evidence reader | Implemented for local evidence files and raw artifact references | Unit tests and `/api/v1/evidence/manifest/latest` |
 | Runtime support status | Internal | Support status endpoint | Implemented for mode, config source, evidence path, last run age/type and collector failures | Unit tests and `/api/v1/support/status` |
@@ -20,7 +24,7 @@ This matrix records what the application is allowed to claim for the lab. A capa
 ## Rules
 
 - Do not treat route presence as semantic support.
-- Do not use POST-based read-list operations until contract validation is added. The Prism Central v3 cluster-list probe is currently route-presence only, not inventory validation.
+- POST-based read-list operations are allowed only inside authenticated, read-only health runs where raw artifacts and tests exist.
 - Do not add an adapter method without a capability row and a test or evidence artifact.
 - A failed collector produces `UNKNOWN`, never `HEALTHY`.
 - Insecure TLS evidence is lab-only and cannot support production-readiness claims.

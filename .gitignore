@@ -1,0 +1,40 @@
+# Local secrets and environment overrides
+.env
+.env.*
+!.env.example
+local.env
+local.env.*
+!local.env.example
+config/local.env
+config/local.env.*
+!config/local.env.example
+config/appliance.env
+config/appliance.env.*
+!config/appliance.env.example
+
+# Python
+__pycache__/
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+build/
+
+# Test and runtime output
+.coverage
+coverage/
+reports/
+evidence/
+dist-appliance/
+tmp/
+*.log
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

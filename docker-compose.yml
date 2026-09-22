@@ -1,0 +1,20 @@
+services:
+  cluster-assurance:
+    build:
+      context: .
+      args:
+        VITE_API_BASE: ""
+    image: cluster-assurance-orchestrator:local
+    container_name: cluster-assurance-orchestrator
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    env_file:
+      - path: ./config/appliance.env.example
+      - path: ./config/appliance.env
+        required: false
+    volumes:
+      - cao-data:/data
+
+volumes:
+  cao-data:

@@ -35,6 +35,8 @@ import {
 import "./styles.css";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8000";
+const STATIC_DEMO = import.meta.env.VITE_STATIC_DEMO === "true";
+const ASSET_BASE = import.meta.env.BASE_URL ?? "/";
 const APP_VERSION = "0.1.0";
 const APP_VERSION_TAG = `v${APP_VERSION}`;
 
@@ -430,10 +432,431 @@ const navGroups: Array<{ label: string; itemIds: PageId[] }> = [
   { label: "Admin", itemIds: ["settings"] }
 ];
 
+const demoUser: AuthUser = {
+  id: "demo-admin",
+  username: "admin",
+  role_id: "admin",
+  role_name: "Admin",
+  permissions: ["all_permissions"]
+};
+
+const demoRun: InventoryRun = {
+  run_id: "demo-run-20260922T163000Z",
+  status: "WARNING",
+  maturity: "static demo evidence",
+  generated_at: "2026-09-22T16:30:00Z",
+  read_only: true,
+  ncc_enabled: false,
+  ssh_enabled: false,
+  clusters: [
+    {
+      source: "prism-central",
+      external_id: "demo-prod-a",
+      name: "NTNX-PROD-A",
+      state: "COMPLETE",
+      version: "6.8.x",
+      raw_artifact_sha256: "demo-sha256-prod-a",
+      collected_at: "2026-09-22T16:30:00Z"
+    },
+    {
+      source: "prism-element",
+      external_id: "demo-edge-a",
+      name: "NTNX-EDGE-A",
+      state: "COMPLETE",
+      version: "6.8.x",
+      raw_artifact_sha256: "demo-sha256-edge-a",
+      collected_at: "2026-09-22T16:30:00Z"
+    },
+    {
+      source: "prism-element",
+      external_id: "demo-lab-a",
+      name: "NTNX-LAB-A",
+      state: "COMPLETE",
+      version: "6.7.x",
+      raw_artifact_sha256: "demo-sha256-lab-a",
+      collected_at: "2026-09-22T16:30:00Z"
+    }
+  ],
+  collectors: [
+    {
+      endpoint_alias: "Demo Prism Central",
+      source: "prism-central",
+      domain: "inventory",
+      status: "HEALTHY",
+      status_code: 200,
+      summary: "Inventory collector returned 3 cluster record(s).",
+      elapsed_ms: 311,
+      item_count: 3,
+      method: "POST",
+      path: "/api/nutanix/v3/clusters/list",
+      raw_artifact: { uri: "demo://evidence/inventory/prism-central.json", sha256: "demo-inventory", size_bytes: 18342 }
+    },
+    {
+      endpoint_alias: "Demo Prism Central",
+      source: "prism-central",
+      domain: "storage",
+      status: "WARNING",
+      status_code: 200,
+      summary: "One storage container is above the demo warning threshold.",
+      elapsed_ms: 264,
+      item_count: 8,
+      method: "POST",
+      path: "/api/nutanix/v3/storage_containers/list",
+      raw_artifact: { uri: "demo://evidence/storage/prism-central.json", sha256: "demo-storage", size_bytes: 15320 }
+    },
+    {
+      endpoint_alias: "Demo Prism Element",
+      source: "prism-element",
+      domain: "hardware",
+      status: "HEALTHY",
+      status_code: 200,
+      summary: "No demo node, disk or CVM hardware faults detected.",
+      elapsed_ms: 228,
+      item_count: 12,
+      method: "GET",
+      path: "/PrismGateway/services/rest/v2.0/hosts",
+      raw_artifact: { uri: "demo://evidence/hardware/prism-element.json", sha256: "demo-hardware", size_bytes: 24622 }
+    },
+    {
+      endpoint_alias: "Demo Prism Element",
+      source: "prism-element",
+      domain: "network",
+      status: "HEALTHY",
+      status_code: 200,
+      summary: "Demo host NIC and network collector returned expected payloads.",
+      elapsed_ms: 219,
+      item_count: 6,
+      method: "GET",
+      path: "/PrismGateway/services/rest/v2.0/networks",
+      raw_artifact: { uri: "demo://evidence/network/prism-element.json", sha256: "demo-network", size_bytes: 10455 }
+    },
+    {
+      endpoint_alias: "Demo Prism Central",
+      source: "prism-central",
+      domain: "capacity",
+      status: "WARNING",
+      status_code: 200,
+      summary: "Demo CPU headroom is below the target planning margin.",
+      elapsed_ms: 333,
+      item_count: 3,
+      method: "POST",
+      path: "/api/nutanix/v3/clusters/list",
+      raw_artifact: { uri: "demo://evidence/capacity/prism-central.json", sha256: "demo-capacity", size_bytes: 18342 }
+    }
+  ],
+  observations: [
+    {
+      check_id: "storage-container-headroom",
+      status: "WARNING",
+      source: "storage",
+      summary: "One demo storage container is above the target capacity margin.",
+      evidence_ref: "demo://evidence/storage/prism-central.json"
+    },
+    {
+      check_id: "capacity-cpu-headroom",
+      status: "WARNING",
+      source: "capacity",
+      summary: "CPU headroom requires review before production readiness sign-off.",
+      evidence_ref: "demo://evidence/capacity/prism-central.json"
+    },
+    {
+      check_id: "hardware-fault-posture",
+      status: "HEALTHY",
+      source: "hardware",
+      summary: "No demo hardware fault payloads were reported.",
+      evidence_ref: "demo://evidence/hardware/prism-element.json"
+    },
+    {
+      check_id: "network-link-state",
+      status: "HEALTHY",
+      source: "network",
+      summary: "Demo network collector returned expected link-state evidence.",
+      evidence_ref: "demo://evidence/network/prism-element.json"
+    }
+  ],
+  warnings: ["Static GitHub Pages demo data is illustrative and does not contact Prism."]
+};
+
+const demoSchedule: SchedulePreview = {
+  schedule: {
+    name: "Daily Standard Lab Preview",
+    recurrence: "daily",
+    start_time: "06:00",
+    timezone: "Europe/Berlin",
+    profile: {
+      name: "Standard Read-only Assurance",
+      version: 1,
+      profile_version_id: "demo-profile-v1"
+    },
+    target_cluster_ids: ["demo-prod-a", "demo-edge-a", "demo-lab-a"]
+  },
+  occurrences: [
+    {
+      occurrence_at: "2026-09-23T06:00:00+02:00",
+      idempotency_key: "demo-daily-20260923",
+      status: "ready",
+      reason: "All demo target clusters are available for this occurrence.",
+      runnable_cluster_ids: ["demo-prod-a", "demo-edge-a", "demo-lab-a"],
+      blocked_cluster_ids: []
+    }
+  ],
+  active_locks: []
+};
+
+const demoNccProfiles: NccProfilesResponse = {
+  transport: "disabled",
+  execution: "planning-only",
+  profiles: [
+    { profile_id: "ncc-health-checks", name: "NCC Health Checks", command_display: "ncc health_checks run_all", timeout_minutes: 60, state: "planned" },
+    { profile_id: "ncc-pre-upgrade", name: "NCC Pre-upgrade", command_display: "ncc health_checks run_all --preupgrade", timeout_minutes: 90, state: "planned" }
+  ]
+};
+
+const demoNccPlan: NccPlan = {
+  status: "blocked",
+  reason: "NCC execution is gated in the public demo.",
+  command_hash: "demo-command-hash",
+  ncc_enabled: false,
+  ssh_enabled: false,
+  profile: demoNccProfiles.profiles[0],
+  warnings: ["Planning surface only. No SSH transport is active."]
+};
+
+const demoManifest: EvidenceManifest = {
+  run_id: demoRun.run_id,
+  product_version: APP_VERSION,
+  profile_version: "demo-profile-v1",
+  generated_at: demoRun.generated_at,
+  manifest_sha256: "demo-manifest-sha256",
+  result_summary: { status: demoRun.status, clusters: demoRun.clusters.length, collectors: demoRun.collectors.length, demo: true },
+  artifacts: [
+    { artifact_type: "inventory", uri: "demo://evidence/inventory/prism-central.json", sha256: "demo-inventory", size_bytes: 18342 },
+    { artifact_type: "storage", uri: "demo://evidence/storage/prism-central.json", sha256: "demo-storage", size_bytes: 15320 },
+    { artifact_type: "hardware", uri: "demo://evidence/hardware/prism-element.json", sha256: "demo-hardware", size_bytes: 24622 }
+  ]
+};
+
+const demoIntegrations: IntegrationReport = {
+  maturity: "planned",
+  outbound_enabled: false,
+  correlation_key: "demo-correlation-key",
+  adapters: [
+    {
+      adapter_id: "email",
+      name: "Email",
+      category: "notification",
+      state: "planned",
+      direction: "outbound",
+      summary: "Email alerts are planned once evidence is trustworthy.",
+      required_settings: ["SMTP host", "sender", "recipient"],
+      supported_events: ["collector_failure", "readiness_gate_open"],
+      safety_notes: ["Disabled in static demo."]
+    },
+    {
+      adapter_id: "webhook",
+      name: "Webhook",
+      category: "notification",
+      state: "planned",
+      direction: "outbound",
+      summary: "Webhook delivery will support generic operational receivers.",
+      required_settings: ["target URL", "secret"],
+      supported_events: ["health_run_completed"],
+      safety_notes: ["Disabled in static demo."]
+    }
+  ]
+};
+
+const demoReadiness: SecurityReadinessReport = {
+  maturity: "lab",
+  gates: [
+    { gate_id: "tls", name: "TLS verification", status: "HEALTHY", summary: "Demo connections use trusted placeholders.", evidence: ["settings/connections"] },
+    { gate_id: "rbac", name: "Role-based access model", status: "HEALTHY", summary: "Local RBAC is enabled in the demo model.", evidence: ["settings/rbac"] },
+    { gate_id: "ncc", name: "NCC execution transport", status: "UNKNOWN", summary: "NCC execution remains gated.", evidence: ["settings/ncc"] },
+    { gate_id: "uat", name: "Controlled UAT", status: "WARNING", summary: "Production claims require real lab evidence.", evidence: ["evidence/latest"] }
+  ],
+  roles: [
+    { permission: "view_dashboard", viewer: true, operator: true, admin: true },
+    { permission: "view_evidence", viewer: true, operator: true, admin: true },
+    { permission: "run_read_only_inventory", viewer: false, operator: true, admin: true },
+    { permission: "manage_connections", viewer: false, operator: false, admin: true },
+    { permission: "manage_rbac", viewer: false, operator: false, admin: true }
+  ],
+  open_risks: ["Static demo evidence is illustrative and should not be used for production readiness decisions."]
+};
+
+const demoCatalogue: CatalogueResponse = {
+  version: "demo-catalogue-v1",
+  checks: [
+    { check_id: "cluster_inventory", name: "Cluster inventory", source: "Prism", default_frequency: "daily", failure_outcome: "UNKNOWN", mandatory: true },
+    { check_id: "storage_capacity", name: "Storage capacity", source: "Prism", default_frequency: "daily", failure_outcome: "WARNING", mandatory: true },
+    { check_id: "hardware_faults", name: "Hardware faults", source: "Prism", default_frequency: "daily", failure_outcome: "WARNING", mandatory: true },
+    { check_id: "network_state", name: "Network state", source: "Prism", default_frequency: "daily", failure_outcome: "WARNING", mandatory: true },
+    { check_id: "ncc_gate", name: "NCC gate", source: "NCC", default_frequency: "planned", failure_outcome: "UNKNOWN", mandatory: false }
+  ]
+};
+
+const demoSupportStatus: SupportStatus = {
+  mode: {
+    environment: "github-pages-demo",
+    demo_mode: true,
+    read_only_mode: true,
+    ncc_enabled: false,
+    ssh_enabled: false,
+    tls_mode: "strict"
+  },
+  api_url: "static demo",
+  config_source: "GitHub Pages build",
+  evidence_directory: "not exposed",
+  admin_database: "static demo data",
+  latest_run: {
+    available: true,
+    run_id: demoRun.run_id,
+    run_type: "static-demo",
+    status: demoRun.status,
+    generated_at: demoRun.generated_at,
+    age_seconds: 420,
+    path: "demo://evidence/latest"
+  },
+  collector_failures: demoRun.collectors.filter((collector) => collector.status !== "HEALTHY").map((collector) => ({
+    source: collector.source,
+    endpoint_alias: collector.endpoint_alias,
+    domain: collector.domain,
+    status: collector.status,
+    status_code: collector.status_code,
+    summary: collector.summary
+  })),
+  warnings: ["Public demo mode is static and does not contact Prism or a backend API."]
+};
+
+const demoHealthRunHistory: HealthRunHistoryItem[] = [
+  {
+    run_id: demoRun.run_id,
+    run_type: "static-demo",
+    status: demoRun.status,
+    generated_at: demoRun.generated_at,
+    age_seconds: 420,
+    path: "demo://evidence/latest",
+    cluster_count: demoRun.clusters.length,
+    collector_count: demoRun.collectors.length,
+    collector_failure_count: demoRun.collectors.filter((collector) => collector.status !== "HEALTHY").length,
+    collector_failures: demoSupportStatus.collector_failures,
+    warnings: demoRun.warnings
+  },
+  {
+    run_id: "demo-run-20260921T163000Z",
+    run_type: "scheduled",
+    status: "HEALTHY",
+    generated_at: "2026-09-21T16:30:00Z",
+    age_seconds: 86820,
+    path: "demo://evidence/previous",
+    cluster_count: 3,
+    collector_count: 5,
+    collector_failure_count: 0,
+    collector_failures: [],
+    warnings: []
+  }
+];
+
+const demoRetention: RetentionReport = {
+  policy: { retention_days: 30, minimum_runs: 10 },
+  evidence_dir: "not exposed",
+  inventory_runs: 2,
+  deletable_runs: 0,
+  deletable_files: [],
+  deleted_files: []
+};
+
+const demoAlerts: AlertStatus = {
+  enabled: false,
+  trustworthy_evidence: false,
+  reason: "Alert delivery is disabled in the static public demo.",
+  email: { configured: false, target: "not configured", state: "planned" },
+  webhook: { configured: false, state: "planned" },
+  later_adapters: { Checkmk: "planned", ServiceNow: "planned" }
+};
+
+const demoRoles: ManagedRole[] = [
+  { id: "viewer", name: "Viewer", permissions: "view_dashboard, view_evidence" },
+  { id: "operator", name: "Operator", permissions: "view_dashboard, view_evidence, run_read_only_inventory, plan_ncc_runs" },
+  { id: "admin", name: "Admin", permissions: "all_permissions" }
+];
+
+const demoUsers: ManagedUser[] = [
+  { id: "demo-admin", username: "admin", name: "Demo Admin", email: "admin@example.invalid", roleId: "admin", roleName: "Admin", status: "Active", passwordSet: true, passwordUpdatedAt: "2026-09-22T16:00:00Z" },
+  { id: "demo-operator", username: "operator", name: "Demo Operator", email: "operator@example.invalid", roleId: "operator", roleName: "Operator", status: "Active", passwordSet: true, passwordUpdatedAt: "2026-09-22T16:00:00Z" }
+];
+
+const demoConnections: ManagedConnection[] = [
+  { id: "demo-pc", name: "Demo Prism Central", type: "Prism Central", url: "https://prism-central.example.invalid:9440", username: "readonly", secretSet: true, tlsMode: "strict", status: "READY", lastCheckedAt: "2026-09-22T16:29:00Z" },
+  { id: "demo-pe", name: "Demo Prism Element", type: "Prism Element", url: "https://prism-element.example.invalid:9440", username: "readonly", secretSet: true, tlsMode: "strict", status: "READY", lastCheckedAt: "2026-09-22T16:29:30Z" }
+];
+
+const demoAuditEvents: AuditEvent[] = [
+  { id: "audit-demo-1", occurred_at: "2026-09-22T16:20:00Z", actor_username: "admin", action: "connection.test", target_type: "connection", target_id: "demo-pc", details: { status: "READY", demo: true } },
+  { id: "audit-demo-2", occurred_at: "2026-09-22T16:15:00Z", actor_username: "admin", action: "storage.backup.list", target_type: "storage", target_id: "postgres", details: { demo: true } }
+];
+
+const demoStorageStatus: StorageStatus = {
+  backend: "postgres",
+  status: "healthy",
+  data_directory: "configured locally",
+  database_location: "postgresql://postgres:5432/cao",
+  credentials_hidden: true,
+  postgres_enabled: true,
+  backup_supported: true,
+  retention: {
+    audit_days: 90,
+    execution_days: 180,
+    evidence_days: 30,
+    evidence_minimum_runs: 10
+  },
+  backups: [
+    { name: "cao-demo-20260922-163000.dump", created_at: "2026-09-22T16:30:00Z", size_bytes: 524288, size_label: "512 KB" },
+    { name: "cao-demo-20260921-163000.dump", created_at: "2026-09-21T16:30:00Z", size_bytes: 393216, size_label: "384 KB" }
+  ]
+};
+
+const demoSchedules: ManagedSchedule[] = [
+  {
+    id: "daily-standard-lab-preview",
+    name: "Daily Standard Lab Preview",
+    enabled: true,
+    updated_at: "2026-09-22T16:10:00Z",
+    definition: {
+      schedule_id: "daily-standard-lab-preview",
+      name: "Daily Standard Lab Preview",
+      profile: {
+        profile_id: "standard-read-only",
+        name: "Standard Read-only Assurance",
+        version: 1,
+        definition_hash: "demo-profile-hash",
+        checks: demoCatalogue.checks.map((check) => check.check_id),
+        timeout_minutes: 60
+      },
+      target_cluster_ids: ["demo-prod-a", "demo-edge-a", "demo-lab-a"],
+      timezone: "Europe/Berlin",
+      recurrence: "daily",
+      start_time: "06:00",
+      weekly_day: 0,
+      enabled: true,
+      misfire_policy: "skip",
+      misfire_grace_minutes: 30
+    }
+  }
+];
+
+const demoScheduleHistory: ScheduleRunHistory[] = [
+  { id: "schedule-run-demo-1", schedule_id: "daily-standard-lab-preview", occurrence_at: "2026-09-22T06:00:00+02:00", target_cluster_ids: ["demo-prod-a", "demo-edge-a", "demo-lab-a"], status: "WARNING", started_at: "2026-09-22T06:00:03+02:00", completed_at: "2026-09-22T06:02:15+02:00", run_id: demoRun.run_id, evidence_path: "demo://evidence/latest", message: "Completed with demo capacity warnings." },
+  { id: "schedule-run-demo-2", schedule_id: "daily-standard-lab-preview", occurrence_at: "2026-09-21T06:00:00+02:00", target_cluster_ids: ["demo-prod-a", "demo-edge-a", "demo-lab-a"], status: "HEALTHY", started_at: "2026-09-21T06:00:02+02:00", completed_at: "2026-09-21T06:01:58+02:00", run_id: "demo-run-20260921T163000Z", evidence_path: "demo://evidence/previous", message: "Completed successfully." }
+];
+
 function App() {
-  const [authToken, setAuthToken] = useState(() => window.sessionStorage.getItem("cao-token") ?? "");
+  const [authToken, setAuthToken] = useState(() => STATIC_DEMO ? (window.sessionStorage.getItem("cao-token") ?? "static-demo-token") : window.sessionStorage.getItem("cao-token") ?? "");
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => {
     const storedUser = window.sessionStorage.getItem("cao-user");
+    if (STATIC_DEMO && !storedUser) {
+      return demoUser;
+    }
     return storedUser ? JSON.parse(storedUser) as AuthUser : null;
   });
   const [activePage, setActivePage] = useState<PageId>("dashboard");
@@ -471,6 +894,22 @@ function App() {
     setLoading(true);
     setError(null);
     setNccPlan(null);
+    if (STATIC_DEMO) {
+      setRun(demoRun);
+      setSchedule(demoSchedule);
+      setNccProfiles(demoNccProfiles);
+      setNccPlan(demoNccPlan);
+      setManifest(demoManifest);
+      setIntegrations(demoIntegrations);
+      setReadiness(demoReadiness);
+      setCatalogue(demoCatalogue);
+      setSupportStatus(demoSupportStatus);
+      setHealthRunHistory(demoHealthRunHistory);
+      setRetention(demoRetention);
+      setAlerts(demoAlerts);
+      setLoading(false);
+      return;
+    }
     try {
       const [runResult, scheduleResult, profilesResult, manifestResult, integrationsResult, readinessResult, catalogueResult, supportResult, historyResult, retentionResult, alertsResult] =
         await Promise.allSettled([
@@ -549,6 +988,16 @@ function App() {
   }
 
   async function handleSignIn(username: string, password: string): Promise<string | null> {
+    if (STATIC_DEMO) {
+      if (username.toLowerCase() !== "admin" || password !== "ChangeMe123!") {
+        return "Use admin / ChangeMe123! for the public demo.";
+      }
+      window.sessionStorage.setItem("cao-token", "static-demo-token");
+      window.sessionStorage.setItem("cao-user", JSON.stringify(demoUser));
+      setAuthToken("static-demo-token");
+      setCurrentUser(demoUser);
+      return null;
+    }
     try {
       const session = await fetchJson<{ token: string; user: AuthUser }>("/api/v1/auth/login", {
         method: "POST",
@@ -601,7 +1050,7 @@ function App() {
             onClick={() => setActivePage("dashboard")}
             aria-label="Go to dashboard"
           >
-            <img src="/zto-logo-mark.svg" alt="" />
+            <img src={`${ASSET_BASE}zto-logo-mark.svg`} alt="" />
             <div>
               <strong>Cluster Assurance</strong>
               <span>Orchestrator for Nutanix Environments</span>
@@ -669,6 +1118,7 @@ function App() {
           </div>
         </header>
 
+        {STATIC_DEMO ? <Banner message="Public GitHub Pages demo: static read-only sample data. Docker or the appliance bundle is required for live Prism collection." /> : null}
         {error ? <Banner tone="unknown" message={error} /> : null}
         {loading ? <Banner message="Loading local assurance data..." /> : null}
 
@@ -745,7 +1195,7 @@ function LoginPage(props: { onSignIn: (username: string, password: string) => Pr
       <div className="login-shell">
         <section className="login-card" aria-labelledby="login-title">
           <div className="login-brand">
-            <img src="/zto-logo-mark.svg" alt="" width="72" height="72" />
+            <img src={`${ASSET_BASE}zto-logo-mark.svg`} alt="" width="72" height="72" />
             <div>
               <div className="login-product">Cluster Assurance</div>
               <div className="login-tagline">Orchestrator for Nutanix Environments</div>
@@ -1590,6 +2040,14 @@ function SettingsPage(props: {
 
   async function loadAdminState() {
     setSettingsError(null);
+    if (STATIC_DEMO) {
+      setRoles(demoRoles);
+      setUsers(demoUsers);
+      setConnections(demoConnections);
+      setAuditEvents(demoAuditEvents);
+      setStorageStatus(demoStorageStatus);
+      return;
+    }
     try {
       const [roleRows, userRows, connectionRows, auditRows, storageRows] = await Promise.all([
         fetchJson<Array<{ id: string; name: string; permissions: string[] }>>("/api/v1/rbac/roles", {}, props.authToken),
@@ -1653,12 +2111,20 @@ function SettingsPage(props: {
   }
 
   async function createStorageBackup() {
+    if (STATIC_DEMO) {
+      setSettingsError("Backup creation is disabled in the static GitHub Pages demo.");
+      return;
+    }
     const backup = await fetchJson<DatabaseBackup>("/api/v1/storage/backups", { method: "POST" }, props.authToken);
     setSettingsError(`Created database backup ${backup.name}.`);
     await loadAdminState();
   }
 
   async function downloadStorageBackup(backupName: string) {
+    if (STATIC_DEMO) {
+      setSettingsError(`Download is disabled for ${backupName} in the static GitHub Pages demo.`);
+      return;
+    }
     const blob = await fetchBlob(`/api/v1/storage/backups/${encodeURIComponent(backupName)}/download`, props.authToken);
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -1671,11 +2137,19 @@ function SettingsPage(props: {
   }
 
   async function showStorageBackupDetails(backupName: string) {
+    if (STATIC_DEMO) {
+      setSettingsError(`${backupName}: static demo backup metadata only.`);
+      return;
+    }
     const details = await fetchJson<DatabaseBackup & { storage: string }>(`/api/v1/storage/backups/${encodeURIComponent(backupName)}`, {}, props.authToken);
     setSettingsError(`${details.name}: ${details.size_label ?? formatBytes(details.size_bytes)} stored in ${details.storage}.`);
   }
 
   async function addConnection() {
+    if (STATIC_DEMO) {
+      setSettingsError("Connection changes are disabled in the static GitHub Pages demo.");
+      return;
+    }
     if (!connectionDraft.name.trim() || !connectionDraft.url.trim()) {
       return;
     }
@@ -1696,11 +2170,19 @@ function SettingsPage(props: {
   }
 
   async function deleteConnection(connectionId: string) {
+    if (STATIC_DEMO) {
+      setSettingsError(`Connection deletion is disabled for ${connectionId} in the static GitHub Pages demo.`);
+      return;
+    }
     await fetchJson<{ status: string }>(`/api/v1/connections/${connectionId}`, { method: "DELETE" }, props.authToken);
     await loadAdminState();
   }
 
   async function updateConnection(connection: ManagedConnection, password: string) {
+    if (STATIC_DEMO) {
+      setSettingsError(`Connection updates are disabled for ${connection.name} in the static GitHub Pages demo.`);
+      return;
+    }
     await fetchJson<ManagedConnection>(`/api/v1/connections/${connection.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -1717,11 +2199,19 @@ function SettingsPage(props: {
   }
 
   async function testConnection(connectionId: string) {
+    if (STATIC_DEMO) {
+      setSettingsError(`Connection ${connectionId} is READY in static demo data. Docker is required for a real Prism probe.`);
+      return;
+    }
     await fetchJson<ManagedConnection>(`/api/v1/connections/${connectionId}/test`, { method: "POST" }, props.authToken);
     await loadAdminState();
   }
 
   async function addRole() {
+    if (STATIC_DEMO) {
+      setSettingsError("Role changes are disabled in the static GitHub Pages demo.");
+      return;
+    }
     if (!roleDraft.name.trim()) {
       return;
     }
@@ -1735,6 +2225,10 @@ function SettingsPage(props: {
   }
 
   async function updateRole(role: ManagedRole) {
+    if (STATIC_DEMO) {
+      setSettingsError(`Role updates are disabled for ${role.name} in the static GitHub Pages demo.`);
+      return;
+    }
     await fetchJson<ManagedRole>(`/api/v1/rbac/roles/${role.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -1744,11 +2238,19 @@ function SettingsPage(props: {
   }
 
   async function deleteRole(roleId: string) {
+    if (STATIC_DEMO) {
+      setSettingsError(`Role deletion is disabled for ${roleId} in the static GitHub Pages demo.`);
+      return;
+    }
     await fetchJson<{ status: string }>(`/api/v1/rbac/roles/${roleId}`, { method: "DELETE" }, props.authToken);
     await loadAdminState();
   }
 
   async function addUser() {
+    if (STATIC_DEMO) {
+      setSettingsError("User changes are disabled in the static GitHub Pages demo.");
+      return;
+    }
     if (!userDraft.username.trim() || !userDraft.name.trim() || !userDraft.email.trim() || !userDraft.password.trim()) {
       return;
     }
@@ -1769,6 +2271,10 @@ function SettingsPage(props: {
   }
 
   async function updateUser(user: ManagedUser) {
+    if (STATIC_DEMO) {
+      setSettingsError(`User updates are disabled for ${user.username} in the static GitHub Pages demo.`);
+      return;
+    }
     await fetchJson<ManagedUser>(`/api/v1/rbac/users/${user.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -1784,11 +2290,19 @@ function SettingsPage(props: {
   }
 
   async function deleteUser(userId: string) {
+    if (STATIC_DEMO) {
+      setSettingsError(`User deletion is disabled for ${userId} in the static GitHub Pages demo.`);
+      return;
+    }
     await fetchJson<{ status: string }>(`/api/v1/rbac/users/${userId}`, { method: "DELETE" }, props.authToken);
     await loadAdminState();
   }
 
   async function setUserPassword(userId: string) {
+    if (STATIC_DEMO) {
+      setSettingsError(`Password changes are disabled for ${userId} in the static GitHub Pages demo.`);
+      return;
+    }
     const password = passwordDrafts[userId]?.trim();
     if (!password) {
       return;
@@ -2715,6 +3229,9 @@ function DataTable(props: { columns: string[]; rows: React.ReactNode[][]; emptyT
 }
 
 async function fetchJson<T>(path: string, init: RequestInit = {}, token = ""): Promise<T> {
+  if (STATIC_DEMO) {
+    return demoJsonResponse<T>(path, init);
+  }
   const headers = new Headers(init.headers);
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
@@ -2734,6 +3251,9 @@ async function fetchJson<T>(path: string, init: RequestInit = {}, token = ""): P
 }
 
 async function fetchBlob(path: string, token = ""): Promise<Blob> {
+  if (STATIC_DEMO) {
+    return new Blob([`Static demo export placeholder for ${path}`], { type: "text/plain" });
+  }
   const headers = new Headers();
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
@@ -2750,6 +3270,112 @@ async function fetchBlob(path: string, token = ""): Promise<Blob> {
     throw new Error(detail);
   }
   return response.blob();
+}
+
+async function demoJsonResponse<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const method = (init.method ?? "GET").toUpperCase();
+  if (path === "/api/v1/auth/login") {
+    return { token: "static-demo-token", user: demoUser } as T;
+  }
+  if (path === "/api/v1/auth/logout") {
+    return { status: "ok" } as T;
+  }
+  if (path === "/api/v1/lab/inventory-runs/latest") {
+    return demoRun as T;
+  }
+  if (path === "/api/v1/schedules/preview/default") {
+    return demoSchedule as T;
+  }
+  if (path === "/api/v1/ncc/profiles") {
+    return demoNccProfiles as T;
+  }
+  if (path === "/api/v1/ncc/plan") {
+    return demoNccPlan as T;
+  }
+  if (path === "/api/v1/evidence/manifest/latest") {
+    return demoManifest as T;
+  }
+  if (path === "/api/v1/integrations/status") {
+    return demoIntegrations as T;
+  }
+  if (path === "/api/v1/security/readiness") {
+    return demoReadiness as T;
+  }
+  if (path === "/api/v1/catalogue") {
+    return demoCatalogue as T;
+  }
+  if (path === "/api/v1/support/status") {
+    return demoSupportStatus as T;
+  }
+  if (path === "/api/v1/health-runs/history") {
+    return demoHealthRunHistory as T;
+  }
+  if (path === "/api/v1/evidence/retention" || path === "/api/v1/evidence/retention/prune") {
+    return demoRetention as T;
+  }
+  if (path === "/api/v1/alerts/status") {
+    return demoAlerts as T;
+  }
+  if (path === "/api/v1/rbac/roles") {
+    return demoRoles.map((role) => ({ id: role.id, name: role.name, permissions: permissionList(role.permissions) })) as T;
+  }
+  if (path === "/api/v1/rbac/users") {
+    return demoUsers.map((user) => ({
+      id: user.id,
+      username: user.username,
+      name: user.name,
+      email: user.email,
+      role_id: user.roleId,
+      role_name: user.roleName,
+      status: user.status,
+      password_set: user.passwordSet,
+      password_updated_at: user.passwordUpdatedAt
+    })) as T;
+  }
+  if (path === "/api/v1/connections") {
+    return demoConnections.map((connection) => ({
+      id: connection.id,
+      name: connection.name,
+      type: connection.type,
+      url: connection.url,
+      username: connection.username,
+      secret_set: connection.secretSet,
+      tls_mode: connection.tlsMode,
+      status: connection.status,
+      last_checked_at: connection.lastCheckedAt
+    })) as T;
+  }
+  if (path === "/api/v1/audit/events") {
+    return demoAuditEvents as T;
+  }
+  if (path === "/api/v1/storage/status") {
+    return demoStorageStatus as T;
+  }
+  if (path === "/api/v1/storage/backups" && method === "POST") {
+    return demoStorageStatus.backups[0] as T;
+  }
+  if (path.startsWith("/api/v1/storage/backups/")) {
+    return { ...demoStorageStatus.backups[0], storage: "static demo data" } as T;
+  }
+  if (path === "/api/v1/health-runs/manual") {
+    return { run_id: demoRun.run_id, status: demoRun.status, evidence_path: "demo://evidence/latest" } as T;
+  }
+  if (path === "/api/v1/schedules") {
+    return (method === "GET" ? demoSchedules : demoSchedules[0]) as T;
+  }
+  if (path === "/api/v1/schedules/runs/history") {
+    return demoScheduleHistory as T;
+  }
+  if (path === "/api/v1/schedules/run-due") {
+    return { due_schedules: 1 } as T;
+  }
+  if (/^\/api\/v1\/schedules\/[^/]+\/run-now$/.test(path)) {
+    return demoScheduleHistory[0] as T;
+  }
+  if (path.startsWith("/api/v1/schedules/")) {
+    return (method === "DELETE" ? { status: "demo" } : demoSchedules[0]) as T;
+  }
+  return { status: "static-demo" } as T;
 }
 
 function unwrap<T>(

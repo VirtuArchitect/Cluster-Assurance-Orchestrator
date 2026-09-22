@@ -8,16 +8,11 @@ This project is independent and is not affiliated with, endorsed by, or supporte
 
 ## Live Demo
 
-Run the Docker profile and open the local live dashboard:
+Open the public static dashboard demo on GitHub Pages:
 
-[http://127.0.0.1:8080/](http://127.0.0.1:8080/)
+[https://virtuarchitect.github.io/Cluster-Assurance-Orchestrator/](https://virtuarchitect.github.io/Cluster-Assurance-Orchestrator/)
 
-```powershell
-Copy-Item config\appliance.env.example config\appliance.env
-docker compose up -d --build
-```
-
-The demo starts the same dashboard, FastAPI backend and PostgreSQL settings database used by the appliance-style deployment. A public hosted demo is not published yet; the local link above is the current supported interactive demo path.
+The GitHub Pages demo is a static read-only preview with built-in sample data. It lets users explore the dashboard, triage, schedules, evidence and settings experience without requiring access to a Nutanix lab, FastAPI backend or PostgreSQL database. Use the Docker or appliance deployment when you need live Prism collection and persisted settings.
 
 ## Screenshots
 
@@ -89,7 +84,7 @@ Copy-Item config\appliance.env.example config\appliance.env
 docker compose up -d --build
 ```
 
-Open [http://127.0.0.1:8080/](http://127.0.0.1:8080/).
+Open the local appliance console at [http://127.0.0.1:8080/](http://127.0.0.1:8080/).
 
 Before using the deployment outside disposable local testing, set strong values for:
 

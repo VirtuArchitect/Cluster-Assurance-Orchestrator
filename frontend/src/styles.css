@@ -1826,14 +1826,14 @@ nav button:focus-visible {
 
 .editable-row.user-row {
   align-items: start;
-  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 1.15fr) minmax(150px, 0.7fr) 140px minmax(0, 0.9fr) auto;
+  grid-template-columns: minmax(110px, 0.8fr) minmax(140px, 1fr) minmax(180px, 1.1fr) minmax(150px, 0.8fr) 140px minmax(300px, 1.25fr) minmax(180px, auto);
 }
 
 .password-reset {
   align-items: start;
   display: grid;
   gap: 8px;
-  grid-template-columns: minmax(0, 1fr) minmax(92px, auto);
+  grid-template-columns: minmax(180px, 1fr) minmax(92px, auto);
 }
 
 .password-reset .table-action,
@@ -1854,6 +1854,7 @@ nav button:focus-visible {
   display: inline-flex;
   flex-wrap: wrap;
   gap: 8px;
+  justify-content: flex-end;
 }
 
 .check-list {

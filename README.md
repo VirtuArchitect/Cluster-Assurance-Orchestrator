@@ -2,6 +2,8 @@
 
 Independent operational health assurance for Nutanix environments.
 
+[Live Demo](https://virtuarchitect.github.io/Cluster-Assurance-Orchestrator/) | [Appliance Runbook](docs/appliance.md) | [GitHub Publication Guide](docs/github-publication.md)
+
 Cluster Assurance Orchestrator is a read-only support console for validating Prism connectivity, collecting cluster evidence, tracking readiness gates, and giving operations teams a clear view of Nutanix estate health before production assurance claims are made.
 
 This project is independent and is not affiliated with, endorsed by, or supported by Nutanix, Inc. Nutanix, AHV, AOS, NCC, Prism Central and Prism Element are trademarks or registered trademarks of Nutanix, Inc. in the United States and other countries.
@@ -9,6 +11,8 @@ This project is independent and is not affiliated with, endorsed by, or supporte
 ## Live Demo
 
 Open the public static dashboard demo on GitHub Pages:
+
+[https://virtuarchitect.github.io/Cluster-Assurance-Orchestrator/](https://virtuarchitect.github.io/Cluster-Assurance-Orchestrator/)
 
 <img width="1852" height="1224" alt="image" src="https://github.com/user-attachments/assets/8a920f0a-b6c6-412c-9deb-d6b35babc8e5" />
 

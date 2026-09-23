@@ -54,9 +54,9 @@ jobs:
       - name: Build appliance bundle
         shell: pwsh
         run: |
-          $scriptArgs = @("-Version", "${{ steps.version.outputs.version }}")
+          $scriptArgs = @{ Version = "${{ steps.version.outputs.version }}" }
           if ("${{ inputs.include_docker_image }}" -eq "false") {
-              $scriptArgs += "-SkipDockerImage"
+              $scriptArgs.SkipDockerImage = $true
           }
           ./scripts/build-appliance.ps1 @scriptArgs
 

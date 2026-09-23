@@ -139,6 +139,24 @@ def test_ncc_profiles_endpoint_lists_allowlist() -> None:
     assert response.json()["profiles"][0]["profile_id"] == "full-run-all"
 
 
+def test_catalogue_endpoint_returns_expanded_operational_checks() -> None:
+    client = TestClient(create_app(Settings(demo_mode=True)))
+    headers = auth_headers(client)
+
+    response = client.get("/api/v1/catalogue", headers=headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    checks = payload["checks"]
+    domains = {check["domain"] for check in checks}
+    assert payload["version"] == "2026.09.assurance-expanded"
+    assert len(checks) >= 40
+    assert {"Storage", "Network", "Capacity", "Data Protection", "Security / Governance", "Operations"}.issubset(domains)
+    assert all(check["evidence_artifact"] for check in checks)
+    assert all(check["remediation_hint"] for check in checks)
+    assert all(check["production_gate_impact"] for check in checks)
+
+
 def test_ncc_plan_rejects_command_text_as_profile() -> None:
     client = TestClient(create_app(Settings(demo_mode=True)))
     headers = auth_headers(client)

@@ -212,6 +212,12 @@ type CatalogueCheck = {
   default_frequency: string;
   failure_outcome: string;
   mandatory: boolean;
+  domain?: string;
+  severity?: string;
+  evidence_artifact?: string;
+  required_permission?: string;
+  remediation_hint?: string;
+  production_gate_impact?: string;
 };
 
 type CatalogueResponse = {
@@ -2597,6 +2603,14 @@ function NccSettingsPage(props: {
 }) {
   const checks = props.catalogue?.checks ?? [];
   const selected = new Set(props.selectedCheckIds);
+  const checksByDomain = checks.reduce<Record<string, CatalogueCheck[]>>((groups, check) => {
+    const domain = check.domain ?? "General";
+    groups[domain] = [...(groups[domain] ?? []), check];
+    return groups;
+  }, {});
+  const mandatoryCount = checks.filter((check) => check.mandatory).length;
+  const selectedMandatoryCount = checks.filter((check) => check.mandatory && selected.has(check.check_id)).length;
+  const criticalCount = checks.filter((check) => (check.severity ?? check.failure_outcome) === "CRITICAL").length;
 
   function toggleCheck(checkId: string) {
     props.setSelectedCheckIds((current) =>
@@ -2608,18 +2622,18 @@ function NccSettingsPage(props: {
 
   return (
     <section className="panel">
-      <PanelHeading title="NCC Gate" description="Select the health checks that belong in the gated NCC profile. SSH execution remains unavailable." />
+      <PanelHeading title="Assurance Check Catalogue" description="Select checks for the gated profile. NCC/SSH execution remains unavailable; catalogue evidence defines the operational contract." />
       <div className="visual-summary-grid compact-visual">
         <RunVisualCard label="Catalogue Checks" value={checks.length.toString()} status={checks.length ? "HEALTHY" : "UNKNOWN"} detail={`Catalogue v${props.catalogue?.version ?? "-"}`} />
         <RunVisualCard label="Selected" value={`${props.selectedCheckIds.length}`} status={props.selectedCheckIds.length ? "HEALTHY" : "WARNING"} detail="Included in gate profile" />
-        <RunVisualCard label="Transport" value={props.profiles?.transport ?? "-"} status={props.profiles?.transport === "ssh" ? "HEALTHY" : "UNKNOWN"} detail={props.profiles?.execution ?? "gated"} />
-        <RunVisualCard label="Mandatory" value={checks.filter((check) => check.mandatory).length.toString()} status="WARNING" detail="Cannot be ignored operationally" />
+        <RunVisualCard label="Mandatory Selected" value={`${selectedMandatoryCount}/${mandatoryCount}`} status={selectedMandatoryCount === mandatoryCount ? "HEALTHY" : "WARNING"} detail="Cannot be ignored operationally" />
+        <RunVisualCard label="Critical Outcomes" value={criticalCount.toString()} status={criticalCount ? "WARNING" : "HEALTHY"} detail="Failure maps to CRITICAL" />
       </div>
       <dl className="details-grid">
         <div><dt>Profiles</dt><dd>{props.profiles?.profiles.length ?? 0}</dd></div>
         <div><dt>Transport</dt><dd>{props.profiles?.transport ?? "not loaded"}</dd></div>
         <div><dt>Execution</dt><dd>{props.profiles?.execution ?? "gated"}</dd></div>
-        <div><dt>Selected Checks</dt><dd>{props.selectedCheckIds.length} / {checks.length}</dd></div>
+        <div><dt>Domains</dt><dd>{Object.keys(checksByDomain).length}</dd></div>
       </dl>
       <div className="toolbar">
         <button className="secondary-button" type="button" onClick={() => props.setSelectedCheckIds(checks.map((check) => check.check_id))}>
@@ -2630,19 +2644,36 @@ function NccSettingsPage(props: {
         </button>
       </div>
       <div className="check-list">
-        {checks.map((check) => (
-          <label className="check-row" key={check.check_id}>
-            <input
-              type="checkbox"
-              checked={selected.has(check.check_id)}
-              onChange={() => toggleCheck(check.check_id)}
-            />
-            <span className="stacked">
-              <strong>{check.check_id} - {check.name}</strong>
-              <small>{check.source} · {check.default_frequency} · failure maps to {check.failure_outcome}</small>
-            </span>
-            {check.mandatory ? <span className="status unknown">MANDATORY</span> : null}
-          </label>
+        {Object.entries(checksByDomain).map(([domain, domainChecks]) => (
+          <div className="check-domain-group" key={domain}>
+            <div className="check-domain-heading">
+              <strong>{domain}</strong>
+              <span>{domainChecks.length} check(s)</span>
+            </div>
+            {domainChecks.map((check) => {
+              const severity = check.severity ?? check.failure_outcome;
+              return (
+                <label className="check-row detailed" key={check.check_id}>
+                  <input
+                    type="checkbox"
+                    checked={selected.has(check.check_id)}
+                    onChange={() => toggleCheck(check.check_id)}
+                  />
+                  <span className="stacked check-copy">
+                    <strong>{check.check_id} - {check.name}</strong>
+                    <small>{check.source} · {check.default_frequency} · failure maps to {check.failure_outcome}</small>
+                    <small>Evidence: {check.evidence_artifact ?? "not specified"} · Permission: {check.required_permission ?? "view_dashboard"}</small>
+                    {check.remediation_hint ? <small>Action: {check.remediation_hint}</small> : null}
+                    {check.production_gate_impact ? <small>Gate impact: {check.production_gate_impact}</small> : null}
+                  </span>
+                  <span className="check-badges">
+                    <StatusBadge status={scheduleRunStatus(severity)} />
+                    {check.mandatory ? <span className="status unknown">MANDATORY</span> : <span className="status healthy">OPTIONAL</span>}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
         ))}
         {!checks.length ? <div className="empty-state">No checks are available from the catalogue.</div> : null}
       </div>

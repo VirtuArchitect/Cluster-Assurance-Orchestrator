@@ -1866,6 +1866,35 @@ nav button:focus-visible {
   overflow: hidden;
 }
 
+.check-domain-group {
+  border-top: 1px solid var(--border);
+  display: grid;
+}
+
+.check-domain-group:first-child {
+  border-top: 0;
+}
+
+.check-domain-heading {
+  align-items: center;
+  background: var(--surface-soft);
+  color: var(--muted-strong);
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+}
+
+.check-domain-heading strong {
+  color: var(--text);
+}
+
+.check-domain-heading span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
 .check-row {
   align-items: center;
   background: var(--table-bg);
@@ -1876,6 +1905,11 @@ nav button:focus-visible {
   padding: 11px 14px;
 }
 
+.check-row.detailed {
+  align-items: start;
+  grid-template-columns: auto minmax(0, 1fr) minmax(180px, auto);
+}
+
 .check-row:first-child {
   border-top: 0;
 }
@@ -1883,6 +1917,18 @@ nav button:focus-visible {
 .check-row input {
   width: 18px;
   height: 18px;
+}
+
+.check-copy {
+  gap: 3px;
+}
+
+.check-badges {
+  align-items: flex-start;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 .event-list {

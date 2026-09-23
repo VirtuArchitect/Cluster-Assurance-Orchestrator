@@ -1825,14 +1825,20 @@ nav button:focus-visible {
 }
 
 .editable-row.user-row {
-  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 1.2fr) 180px 140px minmax(260px, 1.1fr) auto;
+  align-items: start;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 1.15fr) minmax(150px, 0.7fr) 140px minmax(0, 0.9fr) auto;
 }
 
 .password-reset {
-  align-items: center;
+  align-items: start;
   display: grid;
   gap: 8px;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(92px, auto);
+}
+
+.password-reset .table-action,
+.editable-row.user-row .row-actions .table-action {
+  min-height: 38px;
 }
 
 .password-reset .password-state {
@@ -1844,6 +1850,7 @@ nav button:focus-visible {
 }
 
 .row-actions {
+  align-items: start;
   display: inline-flex;
   flex-wrap: wrap;
   gap: 8px;

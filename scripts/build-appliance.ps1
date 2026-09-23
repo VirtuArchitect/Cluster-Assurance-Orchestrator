@@ -6,6 +6,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+if ($PSVersionTable.PSVersion.Major -ge 7) {
+    $PSNativeCommandUseErrorActionPreference = $true
+}
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $outputRoot = Join-Path $repoRoot $OutputDir

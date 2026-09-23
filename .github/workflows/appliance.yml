@@ -54,11 +54,11 @@ jobs:
       - name: Build appliance bundle
         shell: pwsh
         run: |
-          $args = @("-Version", "${{ steps.version.outputs.version }}")
+          $scriptArgs = @("-Version", "${{ steps.version.outputs.version }}")
           if ("${{ inputs.include_docker_image }}" -eq "false") {
-              $args += "-SkipDockerImage"
+              $scriptArgs += "-SkipDockerImage"
           }
-          ./scripts/build-appliance.ps1 @args
+          ./scripts/build-appliance.ps1 @scriptArgs
 
       - name: Upload appliance artifacts
         uses: actions/upload-artifact@v4

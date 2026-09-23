@@ -19,7 +19,8 @@ The GitHub Pages demo is a static read-only preview with built-in sample data. I
 
 ### Operator Dashboard
 
-![Cluster Assurance dashboard](docs/assets/cao-dashboard.png)
+<img width="1852" height="1224" alt="image" src="https://github.com/user-attachments/assets/c103a14c-e3a5-4127-ac0b-0baeaf82f985" />
+
 
 ### PostgreSQL Storage And Backups
 

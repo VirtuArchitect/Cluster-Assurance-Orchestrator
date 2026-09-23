@@ -1315,8 +1315,9 @@ nav button:focus-visible {
 }
 
 .data-row.header {
-  background: var(--table-header);
-  color: var(--text-inverse);
+  background: var(--surface-soft);
+  border-bottom: 1px solid var(--border);
+  color: var(--muted-strong);
   font-size: 13px;
   font-weight: 600;
 }

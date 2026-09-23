@@ -72,6 +72,7 @@ React console  --->  FastAPI API  --->  PostgreSQL settings DB
 | --- | --- | --- |
 | Docker Compose | You want the normal local or small-team deployment with PostgreSQL | `docker compose up -d --build` |
 | Appliance bundle | You need a transferable ZIP with Compose files, env template, runbook and checksum | `.\scripts\build-appliance.ps1 -Version 0.1.0` |
+| GitHub appliance workflow | You want GitHub to build and publish the appliance ZIP as an artifact or release asset | **Actions > Appliance Bundle** |
 | Local development | You are changing backend or frontend code | Run FastAPI and Vite separately |
 | Lab validation | You need to inspect live Prism response shapes before trusting collectors | `python -m app.cli.inspect_evidence_schema` |
 
@@ -191,6 +192,13 @@ The bundle is written under `dist-appliance/` and includes:
 - Docker image tar when Docker is available and `-SkipDockerImage` is not used
 
 See [docs/appliance.md](docs/appliance.md) for install, air-gapped transfer, backup and restore guidance.
+
+The same bundle can be created in GitHub from **Actions > Appliance Bundle**. The workflow supports:
+
+- manual appliance builds with a chosen version
+- optional inclusion of the Docker image tar
+- workflow artifacts for every run
+- release assets when run from a `v*` tag or when `create_release` is selected manually
 
 ## Security Model
 

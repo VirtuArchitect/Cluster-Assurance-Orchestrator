@@ -59,16 +59,18 @@ Open a pull request, wait for GitHub CI, then merge into `main`.
 
 ## Appliance Release
 
-After CI is green on the release commit:
+After CI is green on the release commit, use **Actions > Appliance Bundle** to create the appliance ZIP. For a release build, push a `v*` tag or run the workflow manually with `create_release` selected.
+
+The workflow publishes these as run artifacts and, for release builds, GitHub Release assets:
+
+- `cluster-assurance-orchestrator-<version>-appliance.zip`
+- `cluster-assurance-orchestrator-<version>-appliance.zip.sha256`
+
+You can also build the same bundle locally:
 
 ```powershell
 .\scripts\build-appliance.ps1 -Version 0.1.0
 ```
-
-Attach these to a GitHub Release:
-
-- `dist-appliance/cluster-assurance-orchestrator-0.1.0-appliance.zip`
-- `dist-appliance/cluster-assurance-orchestrator-0.1.0-appliance.zip.sha256`
 
 State the support boundary clearly:
 

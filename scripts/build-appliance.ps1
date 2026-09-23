@@ -14,6 +14,16 @@ $imageTag = "$ImageName`:$Version"
 $archivePath = Join-Path $outputRoot "cluster-assurance-orchestrator-$Version-appliance.zip"
 $checksumPath = "$archivePath.sha256"
 
+function Join-RepoPath {
+    param([string[]]$Parts)
+
+    $path = $repoRoot
+    foreach ($part in $Parts) {
+        $path = Join-Path $path $part
+    }
+    return $path
+}
+
 if (Test-Path $stagingRoot) {
     Remove-Item -LiteralPath $stagingRoot -Recurse -Force
 }
@@ -22,10 +32,10 @@ New-Item -ItemType Directory -Path (Join-Path $stagingRoot "config") | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $stagingRoot "docs") | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $stagingRoot "scripts") | Out-Null
 
-Copy-Item -LiteralPath (Join-Path $repoRoot "docker-compose.yml") -Destination $stagingRoot
-Copy-Item -LiteralPath (Join-Path $repoRoot "config\appliance.env.example") -Destination (Join-Path $stagingRoot "config\appliance.env.example")
-Copy-Item -LiteralPath (Join-Path $repoRoot "docs\appliance.md") -Destination (Join-Path $stagingRoot "docs\appliance.md")
-Copy-Item -LiteralPath (Join-Path $repoRoot "README.md") -Destination $stagingRoot
+Copy-Item -LiteralPath (Join-RepoPath @("docker-compose.yml")) -Destination $stagingRoot
+Copy-Item -LiteralPath (Join-RepoPath @("config", "appliance.env.example")) -Destination (Join-Path (Join-Path $stagingRoot "config") "appliance.env.example")
+Copy-Item -LiteralPath (Join-RepoPath @("docs", "appliance.md")) -Destination (Join-Path (Join-Path $stagingRoot "docs") "appliance.md")
+Copy-Item -LiteralPath (Join-RepoPath @("README.md")) -Destination $stagingRoot
 
 $manifest = [ordered]@{
     product = "Cluster Assurance Orchestrator for Nutanix Environments"

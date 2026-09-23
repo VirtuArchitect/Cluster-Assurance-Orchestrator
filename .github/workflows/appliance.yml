@@ -1,0 +1,106 @@
+name: Appliance Bundle
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Appliance version, for example 0.1.0. Leave blank to use the current ref name or pyproject version."
+        required: false
+        type: string
+      include_docker_image:
+        description: "Build and include the Docker image tar in the appliance ZIP."
+        required: true
+        default: true
+        type: boolean
+      create_release:
+        description: "Create or update a GitHub Release and attach the appliance artifacts."
+        required: true
+        default: false
+        type: boolean
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  appliance:
+    name: Build appliance bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Resolve appliance version
+        id: version
+        shell: pwsh
+        run: |
+          $version = "${{ inputs.version }}"
+          if ([string]::IsNullOrWhiteSpace($version) -and $env:GITHUB_REF_NAME -match '^v(.+)$') {
+              $version = $Matches[1]
+          }
+          if ([string]::IsNullOrWhiteSpace($version)) {
+              $pyproject = Get-Content -LiteralPath "pyproject.toml" -Raw
+              if ($pyproject -match '(?m)^version\s*=\s*"([^"]+)"') {
+                  $version = $Matches[1]
+              }
+          }
+          if ([string]::IsNullOrWhiteSpace($version)) {
+              throw "Unable to resolve appliance version."
+          }
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "tag=v$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Build appliance bundle
+        shell: pwsh
+        run: |
+          $args = @("-Version", "${{ steps.version.outputs.version }}")
+          if ("${{ inputs.include_docker_image }}" -eq "false") {
+              $args += "-SkipDockerImage"
+          }
+          ./scripts/build-appliance.ps1 @args
+
+      - name: Upload appliance artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cluster-assurance-orchestrator-${{ steps.version.outputs.version }}-appliance
+          path: |
+            dist-appliance/cluster-assurance-orchestrator-${{ steps.version.outputs.version }}-appliance.zip
+            dist-appliance/cluster-assurance-orchestrator-${{ steps.version.outputs.version }}-appliance.zip.sha256
+          if-no-files-found: error
+
+      - name: Create or update GitHub Release
+        if: ${{ github.event_name == 'push' || inputs.create_release }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.version.outputs.tag }}"
+          $title = "Cluster Assurance Orchestrator $tag"
+          $notes = @"
+          Cluster Assurance Orchestrator appliance bundle.
+
+          Artifacts:
+          - cluster-assurance-orchestrator-${{ steps.version.outputs.version }}-appliance.zip
+          - cluster-assurance-orchestrator-${{ steps.version.outputs.version }}-appliance.zip.sha256
+
+          Safety boundary:
+          - independent project, not affiliated with or supported by Nutanix
+          - read-only Prism collection by default
+          - NCC is planning-only; SSH execution is disabled
+          - validate lab TLS and evidence gates before production claims
+          "@
+          gh release view $tag 2>$null
+          if ($LASTEXITCODE -ne 0) {
+              gh release create $tag `
+                --title $title `
+                --notes $notes `
+                "dist-appliance/cluster-assurance-orchestrator-${{ steps.version.outputs.version }}-appliance.zip" `
+                "dist-appliance/cluster-assurance-orchestrator-${{ steps.version.outputs.version }}-appliance.zip.sha256"
+          }
+          else {
+              gh release upload $tag `
+                "dist-appliance/cluster-assurance-orchestrator-${{ steps.version.outputs.version }}-appliance.zip" `
+                "dist-appliance/cluster-assurance-orchestrator-${{ steps.version.outputs.version }}-appliance.zip.sha256" `
+                --clobber
+          }

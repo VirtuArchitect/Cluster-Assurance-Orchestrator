@@ -27,6 +27,16 @@ The script writes:
 
 Use `-SkipDockerImage` to create a lightweight bundle without an image tar.
 
+The same bundle can be built in GitHub Actions:
+
+1. Open **Actions > Appliance Bundle**.
+2. Choose **Run workflow**.
+3. Set the version.
+4. Choose whether to include the Docker image tar.
+5. Download the generated appliance artifact from the workflow run.
+
+For release builds, push a `v*` tag or select `create_release` during a manual run. The workflow attaches the ZIP and `.sha256` file to the GitHub Release.
+
 ## Install
 
 1. Extract the appliance ZIP on the target host.

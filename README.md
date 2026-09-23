@@ -24,7 +24,8 @@ The GitHub Pages demo is a static read-only preview with built-in sample data. I
 
 ### PostgreSQL Storage And Backups
 
-![Cluster Assurance storage settings](docs/assets/cao-settings-storage.png)
+<img width="1853" height="1224" alt="image" src="https://github.com/user-attachments/assets/573ae4b2-7738-453d-9a2c-e6246ef07c91" />
+
 
 ### Login Experience
 

@@ -10,7 +10,8 @@ This project is independent and is not affiliated with, endorsed by, or supporte
 
 Open the public static dashboard demo on GitHub Pages:
 
-[https://virtuarchitect.github.io/Cluster-Assurance-Orchestrator/](https://virtuarchitect.github.io/Cluster-Assurance-Orchestrator/)
+<img width="1852" height="1224" alt="image" src="https://github.com/user-attachments/assets/8a920f0a-b6c6-412c-9deb-d6b35babc8e5" />
+
 
 The GitHub Pages demo is a static read-only preview with built-in sample data. It lets users explore the dashboard, triage, schedules, evidence and settings experience without requiring access to a Nutanix lab, FastAPI backend or PostgreSQL database. Use the Docker or appliance deployment when you need live Prism collection and persisted settings.
 

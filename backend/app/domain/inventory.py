@@ -43,6 +43,7 @@ class InventoryCollectorResult(BaseModel):
     status_code: int | None = None
     elapsed_ms: int | None = None
     item_count: int | None = None
+    resource_ids: list[str] = Field(default_factory=list)
     clusters: list[ClusterInventoryItem] = Field(default_factory=list)
     raw_artifact: RawArtifactRef | None = None
     error: str | None = None
@@ -53,6 +54,7 @@ class InventoryRunReport(BaseModel):
     maturity: str = "lab inventory"
     generated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     read_only: bool
+    tls_mode: str = "unknown"
     ncc_enabled: bool
     ssh_enabled: bool
     collectors: list[InventoryCollectorResult]

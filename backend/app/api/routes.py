@@ -11,7 +11,7 @@ from app.adapters.nutanix import AdapterDisabledError
 from app.domain.catalogue import default_catalogue
 from app.domain.demo import build_demo_run
 from app.services.lab_discovery import run_lab_discovery
-from app.services.inventory_run import inventory_run_history, read_latest_inventory_evidence, run_inventory, write_inventory_evidence
+from app.services.inventory_run import inventory_run_history, read_latest_inventory_evidence, run_inventory, write_inventory_evidence, estate_entries
 from app.domain.scheduling import ScheduleDefinition
 from app.services.scheduling import default_schedule_for_latest_inventory, preview_schedule
 from app.services.schedule_runner import active_locks_for_preview, run_due_schedules, run_schedule_now
@@ -26,6 +26,7 @@ from app.services.alerting import alert_status, send_test_alert
 from app.services.artifacts import public_artifact_ref
 from app.services.admin_store import AdminStore, Principal
 from app.services.storage_ops import create_database_backup, format_bytes as format_file_size, get_database_backup, storage_status
+from app.services.monitoring import collect_monitoring, latest_monitoring
 
 router = APIRouter()
 
@@ -310,10 +311,11 @@ def audit_events(
 
 
 @router.get("/health")
-def health(request: Request) -> dict[str, object]:
-    settings = request.app.state.settings
+def health(request: Request, store: Annotated[AdminStore, Depends(admin_store)]) -> dict[str, object]:
+    settings = store.inventory_settings_from_connections()
     return {
         "status": "ok",
+        "modeScope": "effective collection configuration",
         "environment": settings.environment,
         "demoMode": settings.demo_mode,
         "readOnlyMode": settings.read_only_mode,
@@ -422,7 +424,7 @@ def latest_lab_inventory_run(
     latest = read_latest_inventory_evidence(settings.evidence_dir)
     if latest is None:
         raise HTTPException(status_code=404, detail="No local inventory evidence found")
-    return public_inventory_payload(latest)
+    return public_inventory_payload(latest) | {"estate_entries": estate_entries(settings.evidence_dir, latest)}
 
 
 @router.get("/health-runs/history")
@@ -440,9 +442,17 @@ def health_run_history(
 def default_schedule_preview(
     request: Request,
     _: Annotated[Principal, Depends(current_principal)],
+    store: Annotated[AdminStore, Depends(admin_store)],
 ) -> dict[str, object]:
     settings = request.app.state.settings
-    return default_schedule_for_latest_inventory(settings.evidence_dir).model_dump(mode="json")
+    previews = [stored_preview(store.get_schedule(row["id"]), store, settings)
+                for row in store.list_schedules() if row.get("enabled", row.get("definition", {}).get("enabled", True))]
+    due = [p for p in previews if p.occurrences]
+    if due:
+        return min(due, key=lambda p: p.occurrences[0].occurrence_at).model_dump(mode="json")
+    fallback = default_schedule_for_latest_inventory(settings.evidence_dir, active_locks_for_preview(store))
+    fallback.schedule.enabled = False
+    return preview_schedule(fallback.schedule, active_locks_for_preview(store)).model_dump(mode="json")
 
 
 @router.post("/schedules/preview")
@@ -545,9 +555,20 @@ def schedules_stored_preview(
         schedule = store.get_schedule(schedule_id)
     except KeyError as error:
         raise HTTPException(status_code=404, detail="Schedule not found") from error
-    preview = preview_schedule(schedule)
-    preview.active_locks = active_locks_for_preview(store)
+    preview = stored_preview(schedule, store, store.settings)
     return preview.model_dump(mode="json")
+
+
+def stored_preview(schedule: ScheduleDefinition, store: AdminStore, settings) -> object:
+    preview = preview_schedule(schedule, active_locks_for_preview(store))
+    latest = read_latest_inventory_evidence(settings.evidence_dir) or {}
+    known = {str(item.get(key)) for item in latest.get("clusters", []) for key in ("external_id", "name") if item.get(key)}
+    unknown = [target for target in schedule.target_cluster_ids if target not in known]
+    if unknown and schedule.enabled:
+        for occurrence in preview.occurrences:
+            occurrence.status = "unknown"
+            occurrence.reason = "Targets not verified against current estate: " + ", ".join(unknown)
+    return preview
 
 
 @router.get("/ncc/profiles")
@@ -699,8 +720,9 @@ def integrations_status(_: Annotated[Principal, Depends(current_principal)]) -> 
 def security_readiness(
     request: Request,
     _: Annotated[Principal, Depends(current_principal)],
+    store: Annotated[AdminStore, Depends(admin_store)],
 ) -> dict[str, object]:
-    return build_readiness_report(request.app.state.settings).model_dump(mode="json")
+    return build_readiness_report(store.inventory_settings_from_connections()).model_dump(mode="json")
 
 
 @router.get("/alerts/status")
@@ -720,4 +742,32 @@ def alerts_test(
 ) -> dict[str, Any]:
     result = send_test_alert(request.app.state.settings)
     store.audit("alerts.tested", actor.user_id, "alert", "test", {"delivery": result.get("delivery")})
+    return result
+
+
+@router.get("/monitoring/latest")
+def monitoring_latest(request: Request, actor: Annotated[Principal, Depends(current_principal)]) -> dict:
+    require_permission(actor, "view_evidence")
+    return latest_monitoring(request.app.state.settings.evidence_dir)
+
+
+@router.get("/monitoring/incidents/{incident_id}")
+def monitoring_incident(incident_id: str, request: Request, actor: Annotated[Principal, Depends(current_principal)]) -> dict:
+    require_permission(actor, "view_evidence")
+    report = latest_monitoring(request.app.state.settings.evidence_dir)
+    incident = next((item for item in report["incidents"] if item["id"] == incident_id), None)
+    if incident is None:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    return {"incident": incident, "run_id": report["run_id"], "generated_at": report["generated_at"], "collection_status": report["status"]}
+
+
+@router.post("/monitoring/collect")
+def monitoring_collect(actor: Annotated[Principal, Depends(current_principal)], store: Annotated[AdminStore, Depends(admin_store)]) -> dict:
+    require_permission(actor, "run_read_only_inventory")
+    try:
+        result = collect_monitoring(store.inventory_settings_from_connections())
+    except (AdapterDisabledError, RuntimeError) as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    store.audit("monitoring.collected", actor.user_id, "monitoring_run", result["run_id"],
+                {"status": result["status"], "collectors": len(result["collectors"])})
     return result

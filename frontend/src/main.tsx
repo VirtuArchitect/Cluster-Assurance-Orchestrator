@@ -1,3 +1,5 @@
+import { MonitoringPage, MonitoringSummary, type MonitoringReport } from "./monitoring";
+import { hasCollectionPermission, ageSeconds, groupAuthenticationFailures, groupedFindingObservations, runIsStale, collectionStatus, inventoryHealthStatus, domainStatus } from "./operational";
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
@@ -40,7 +42,7 @@ const ASSET_BASE = import.meta.env.BASE_URL ?? "/";
 const APP_VERSION = "0.1.0";
 const APP_VERSION_TAG = `v${APP_VERSION}`;
 
-type HealthStatus = "CRITICAL" | "UNKNOWN" | "WARNING" | "OVERDUE" | "HEALTHY";
+export type HealthStatus = "CRITICAL" | "UNKNOWN" | "WARNING" | "OVERDUE" | "HEALTHY";
 type ThemeMode = "light" | "dark";
 type SettingsPageId = "storage" | "connections" | "readiness" | "rbac" | "ncc" | "audit" | "about";
 type PageId =
@@ -48,12 +50,15 @@ type PageId =
   | "triage"
   | "estate"
   | "runs"
+  | "incidents"
   | "findings"
   | "schedules"
   | "evidence"
   | "settings";
 
 type Cluster = {
+  availability?: "CURRENT" | "UNAVAILABLE";
+  evidence_run_id?: string;
   source: string;
   external_id: string;
   name: string;
@@ -63,7 +68,7 @@ type Cluster = {
   collected_at: string;
 };
 
-type Collector = {
+export type Collector = {
   endpoint_alias: string;
   source: string;
   domain?: string;
@@ -72,6 +77,7 @@ type Collector = {
   summary: string;
   elapsed_ms: number | null;
   item_count?: number | null;
+  resource_ids?: string[];
   method: string;
   path: string;
   raw_artifact: {
@@ -81,7 +87,7 @@ type Collector = {
   } | null;
 };
 
-type Observation = {
+export type Observation = {
   check_id: string;
   status: HealthStatus;
   source: string;
@@ -89,7 +95,9 @@ type Observation = {
   evidence_ref: string | null;
 };
 
-type InventoryRun = {
+export type InventoryRun = {
+  estate_entries?: Cluster[];
+  tls_mode?: string;
   run_id: string;
   status: HealthStatus;
   maturity: string;
@@ -323,6 +331,7 @@ type SupportStatus = {
   evidence_directory: string;
   admin_database: string;
   latest_run: {
+    tls_mode?: string;
     available: boolean;
     run_id: string | null;
     run_type: string | null;
@@ -426,7 +435,8 @@ const pages: Array<{ id: PageId; label: string; icon: React.ComponentType<{ size
   { id: "triage", label: "Operator Triage", icon: CheckCircle2 },
   { id: "estate", label: "Cluster Estate", icon: Database },
   { id: "runs", label: "Health Runs", icon: Activity },
-  { id: "findings", label: "Findings", icon: SearchCheck },
+  { id: "incidents", label: "Prism Incidents", icon: AlertTriangle },
+  { id: "findings", label: "Collection Diagnostics", icon: SearchCheck },
   { id: "schedules", label: "Schedules", icon: CalendarClock },
   { id: "evidence", label: "Evidence", icon: FileJson },
   { id: "settings", label: "Settings", icon: Settings }
@@ -434,7 +444,7 @@ const pages: Array<{ id: PageId; label: string; icon: React.ComponentType<{ size
 
 const navGroups: Array<{ label: string; itemIds: PageId[] }> = [
   { label: "Overview", itemIds: ["dashboard", "triage"] },
-  { label: "Assure", itemIds: ["estate", "runs", "findings", "schedules", "evidence"] },
+  { label: "Assure", itemIds: ["estate", "runs", "incidents", "findings", "schedules", "evidence"] },
   { label: "Admin", itemIds: ["settings"] }
 ];
 
@@ -870,6 +880,12 @@ function App() {
     const storedTheme = window.localStorage.getItem("cao-theme");
     return storedTheme === "dark" ? "dark" : "light";
   });
+  const [monitoring, setMonitoring] = useState<MonitoringReport | null>(null);
+  const [, setClock] = useState(0);
+  useEffect(() => {
+    const timer = window.setInterval(() => setClock((clock) => clock + 1), 15_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const [run, setRun] = useState<InventoryRun | null>(null);
   const [schedule, setSchedule] = useState<SchedulePreview | null>(null);
   const [nccProfiles, setNccProfiles] = useState<NccProfilesResponse | null>(null);
@@ -917,7 +933,7 @@ function App() {
       return;
     }
     try {
-      const [runResult, scheduleResult, profilesResult, manifestResult, integrationsResult, readinessResult, catalogueResult, supportResult, historyResult, retentionResult, alertsResult] =
+      const [runResult, scheduleResult, profilesResult, manifestResult, integrationsResult, readinessResult, catalogueResult, supportResult, historyResult, retentionResult, alertsResult, monitoringResult, userResult] =
         await Promise.allSettled([
           fetchJson<InventoryRun>("/api/v1/lab/inventory-runs/latest", {}, authToken),
           fetchJson<SchedulePreview>("/api/v1/schedules/preview/default", {}, authToken),
@@ -929,7 +945,9 @@ function App() {
           fetchJson<SupportStatus>("/api/v1/support/status", {}, authToken),
           fetchJson<HealthRunHistoryItem[]>("/api/v1/health-runs/history", {}, authToken),
           fetchJson<RetentionReport>("/api/v1/evidence/retention", {}, authToken),
-          fetchJson<AlertStatus>("/api/v1/alerts/status", {}, authToken)
+          fetchJson<AlertStatus>("/api/v1/alerts/status", {}, authToken),
+          fetchJson<MonitoringReport>("/api/v1/monitoring/latest", {}, authToken),
+          fetchJson<AuthUser>("/api/v1/auth/me", {}, authToken)
         ]);
 
       const latestRun = unwrap(runResult, setRun);
@@ -947,8 +965,11 @@ function App() {
       }
       unwrap(retentionResult, setRetention);
       unwrap(alertsResult, setAlerts);
+      if (userResult.status === "fulfilled") setCurrentUser(userResult.value);
+      if (monitoringResult.status === "fulfilled") setMonitoring(monitoringResult.value);
+      else setMonitoring(null);
 
-      const authFailure = [runResult, scheduleResult, profilesResult, manifestResult, integrationsResult, readinessResult, catalogueResult, supportResult, historyResult, retentionResult, alertsResult]
+      const authFailure = [runResult, scheduleResult, profilesResult, manifestResult, integrationsResult, readinessResult, catalogueResult, supportResult, historyResult, retentionResult, alertsResult, monitoringResult, userResult]
         .find((result) => result.status === "rejected" && isAuthError(result.reason));
       if (authFailure) {
         expireSession();
@@ -1032,14 +1053,17 @@ function App() {
     window.sessionStorage.removeItem("cao-user");
     setAuthToken("");
     setCurrentUser(null);
+    setMonitoring(null);
     setActivePage("dashboard");
   }
 
   const problemCollectors = useMemo(
-    () => run?.collectors.filter((collector) => collector.status !== "HEALTHY") ?? [],
+    () => groupAuthenticationFailures(run?.collectors.filter((collector) => collector.status !== "HEALTHY") ?? []),
     [run]
   );
 
+  const liveSupport = supportStatus ? { ...supportStatus, latest_run: { ...supportStatus.latest_run, age_seconds: ageSeconds(supportStatus.latest_run.generated_at) } } : null;
+  const liveHistory = healthRunHistory.map((item) => ({ ...item, age_seconds: ageSeconds(item.generated_at) }));
   const activeMeta = pages.find((page) => page.id === activePage) ?? pages[0];
 
   if (!authToken) {
@@ -1076,6 +1100,8 @@ function App() {
                   const Icon = page.icon;
                   return (
                     <button
+                      aria-label={page.label}
+                      title={page.label}
                       key={page.id}
                       className={activePage === page.id ? "active" : ""}
                       type="button"
@@ -1128,33 +1154,36 @@ function App() {
         {error ? <Banner tone="unknown" message={error} /> : null}
         {loading ? <Banner message="Loading local assurance data..." /> : null}
 
+        {["dashboard", "triage"].includes(activePage) ? <MonitoringSummary report={monitoring} onOpen={() => setActivePage("incidents")} /> : null}
+        {activePage === "incidents" ? (STATIC_DEMO ? <Banner message="Live Prism incident collection requires the appliance. No monitoring requests are sent from the static demo." /> : <MonitoringPage authToken={authToken} initial={monitoring} onUpdate={setMonitoring} canCollect={hasCollectionPermission(currentUser)} />) : null}
         {activePage === "dashboard" ? (
           <DashboardPage
             run={run}
             problemCollectors={problemCollectors}
             schedule={schedule}
             readiness={readiness}
-            support={supportStatus}
-            history={healthRunHistory}
+            support={liveSupport}
+            history={liveHistory}
             onNavigate={setActivePage}
           />
         ) : null}
         {activePage === "triage" ? (
           <TriagePage
+            monitoring={monitoring}
             run={run}
             problemCollectors={problemCollectors}
             schedule={schedule}
             readiness={readiness}
-            support={supportStatus}
-            history={healthRunHistory}
+            support={liveSupport}
+            history={liveHistory}
             onNavigate={setActivePage}
           />
         ) : null}
         {activePage === "estate" ? <EstatePage run={run} /> : null}
-        {activePage === "runs" ? <RunsPage run={run} history={healthRunHistory} authToken={authToken} onRunComplete={loadConsoleData} /> : null}
+        {activePage === "runs" ? <RunsPage run={run} history={liveHistory} authToken={authToken} onRunComplete={loadConsoleData} /> : null}
         {activePage === "findings" ? <FindingsPage run={run} /> : null}
         {activePage === "schedules" ? <SchedulesPage schedule={schedule} authToken={authToken} onRunComplete={loadConsoleData} /> : null}
-        {activePage === "evidence" ? <EvidencePage run={run} manifest={manifest} retention={retention} support={supportStatus} authToken={authToken} onRefresh={loadConsoleData} /> : null}
+        {activePage === "evidence" ? <EvidencePage run={run} manifest={manifest} retention={retention} support={liveSupport} authToken={authToken} onRefresh={loadConsoleData} /> : null}
         {activePage === "settings" ? (
           <SettingsPage
             integrations={integrations}
@@ -1164,7 +1193,7 @@ function App() {
             readiness={readiness}
             catalogue={catalogue}
             authToken={authToken}
-            support={supportStatus}
+            support={liveSupport}
             currentUser={currentUser}
             onAuthExpired={expireSession}
           />
@@ -1278,7 +1307,7 @@ function DashboardPage(props: {
   onNavigate: (page: PageId) => void;
 }) {
   const blockedGates = props.readiness?.gates.filter((gate) => gate.status !== "PASS").length ?? 0;
-  const estateStatus = props.run?.status ?? "UNKNOWN";
+  const estateStatus = inventoryHealthStatus(props.run);
   const primaryIssue = props.problemCollectors[0] ?? null;
   const failedCollectors = props.problemCollectors;
   const healthyCollectors = props.run?.collectors.filter((collector) => collector.status === "HEALTHY") ?? [];
@@ -1289,16 +1318,16 @@ function DashboardPage(props: {
   return (
     <>
       <section className="ops-strip" aria-label="Operations overview">
-        <OpsStripItem label="Estate Health" status={estateStatus} value={estateStatus} detail={props.run ? `${props.run.clusters.length} observed cluster(s)` : "No evidence"} />
-        <OpsStripItem label="Collection" status={failedCollectors.length ? "WARNING" : "HEALTHY"} value={`${healthyCollectors.length}/${props.run?.collectors.length ?? 0}`} detail={`${failedCollectors.length} collector issue(s)`} />
-        <OpsStripItem label="Readiness" status={blockedGates ? "WARNING" : "HEALTHY"} value={blockedGates ? `${blockedGates} open` : "Clear"} detail="Production gate posture" />
-        <OpsStripItem label="Schedule" status={nextRun?.status === "ready" ? "HEALTHY" : "WARNING"} value={nextRun ? formatDate(nextRun.occurrence_at) : "None"} detail={nextRun?.reason ?? "No preview"} />
+        <OpsStripItem label="Estate Health" status={estateStatus} value="Not evaluated" detail="Inventory does not establish infrastructure health" />
+        <OpsStripItem label="Collection" status={collectionStatus(props.run)} value={`${healthyCollectors.length}/${props.run?.collectors.length ?? 0}`} detail={`${failedCollectors.length} incident(s)`} />
+        <OpsStripItem label="Readiness" status={!props.readiness ? "UNKNOWN" : blockedGates ? "WARNING" : "HEALTHY"} value={!props.readiness ? "Unknown" : blockedGates ? `${blockedGates} incomplete` : "Listed gates passed"} detail="Production gate posture" />
+        <OpsStripItem label="Schedule" status={nextRun?.status.toLowerCase() === "ready" ? "HEALTHY" : "WARNING"} value={nextRun ? formatDate(nextRun.occurrence_at) : "None"} detail={nextRun?.reason ?? "No preview"} />
         <OpsStripItem label="Evidence Trust" status={confidence.status} value={confidence.label} detail={confidence.detail} />
       </section>
       <section className={`ops-hero ${estateStatus.toLowerCase()}`} aria-label="Operational summary">
         <div className="ops-hero-main">
           <div className="ops-kicker">Current estate verdict</div>
-          <h2>{estateStatus}</h2>
+          <h2>Health not evaluated</h2>
           <p>{dashboardReason(primaryIssue, props.support)}</p>
           <div className="ops-chip-row">
             <span className={`status ${estateStatus.toLowerCase()}`}>{estateStatus}</span>
@@ -1340,15 +1369,15 @@ function DashboardPage(props: {
         <OperatorCard
           icon={<Database />}
           title="Collection Coverage"
-          status={failedCollectors.length ? "WARNING" : "HEALTHY"}
-          summary={`${props.run?.clusters.length ?? 0} cluster(s), ${healthyCollectors.length} healthy collector(s), ${failedCollectors.length} issue(s).`}
+          status={collectionStatus(props.run)}
+          summary={`${props.run?.clusters.length ?? 0} current source observations, ${healthyCollectors.length} successful collector(s), ${failedCollectors.length} incident(s).`}
           action="View estate"
           onAction={() => props.onNavigate("estate")}
         />
         <OperatorCard
           icon={<CalendarClock />}
           title="Schedule Status"
-          status={nextRun?.status === "ready" ? "HEALTHY" : nextRun?.status === "partial" ? "WARNING" : "UNKNOWN"}
+          status={nextRun?.status.toLowerCase() === "ready" ? "HEALTHY" : nextRun?.status === "partial" ? "WARNING" : "UNKNOWN"}
           summary={nextRun ? `${props.schedule?.schedule.name}: ${formatDate(nextRun.occurrence_at)}` : "No schedule preview is available."}
           action="Manage schedules"
           onAction={() => props.onNavigate("schedules")}
@@ -1356,8 +1385,8 @@ function DashboardPage(props: {
         <OperatorCard
           icon={<ShieldCheck />}
           title="Readiness Gates"
-          status={blockedGates ? "WARNING" : "HEALTHY"}
-          summary={`${blockedGates} gate(s) still need attention before production claims.`}
+          status={!props.readiness ? "UNKNOWN" : blockedGates ? "WARNING" : "HEALTHY"}
+          summary={props.readiness ? `${blockedGates} gate(s) still need attention before production claims.` : "Readiness evidence is unavailable."}
           action="Review gates"
           onAction={() => props.onNavigate("settings")}
         />
@@ -1374,7 +1403,7 @@ function DashboardPage(props: {
         <PanelHeading title="Collector Attention" description="Issues first, with likely operator action before supporting detail." />
         <div className="collector-focus-list">
           {failedCollectors.map((collector) => (
-            <article className="collector-focus" key={`${collector.endpoint_alias}-${collector.path}`}>
+            <article className="collector-focus" key={`${collector.source}-${collector.endpoint_alias}-${collector.domain ?? "inventory"}-${collector.path}`}>
               <div>
                 <strong>{collectorTitle(collector)}</strong>
                 <p>{collector.summary}</p>
@@ -1388,7 +1417,7 @@ function DashboardPage(props: {
         {healthyCollectors.length ? (
           <div className="healthy-collector-strip">
             <span>{healthyCollectors.length} healthy collector(s)</span>
-            {healthyCollectors.slice(0, 3).map((collector) => <span key={`${collector.endpoint_alias}-${collector.path}`}>{collector.endpoint_alias}</span>)}
+            {healthyCollectors.slice(0, 3).map((collector) => <span key={`${collector.source}-${collector.endpoint_alias}-${collector.domain ?? "inventory"}-${collector.path}`}>{collector.endpoint_alias}</span>)}
           </div>
         ) : null}
       </section>
@@ -1431,6 +1460,7 @@ function DashboardPage(props: {
 }
 
 function TriagePage(props: {
+  monitoring: MonitoringReport | null;
   run: InventoryRun | null;
   problemCollectors: Collector[];
   schedule: SchedulePreview | null;
@@ -1445,13 +1475,15 @@ function TriagePage(props: {
   const openGates = props.readiness?.gates.filter((gate) => gate.status !== "PASS") ?? [];
   const nextRun = props.schedule?.occurrences[0] ?? null;
   const domains = operationalDomains(props.run, props.support);
-  const primaryAction = props.problemCollectors.length ? "Fix the failing collector, then rerun health collection." : openGates.length ? "Review open readiness gates before production claims." : "Export evidence or keep monitoring scheduled health checks.";
+  const activeIncidents = (props.monitoring?.incidents ?? []).filter((item) => item.availability === "CURRENT" && !item.resolved && ["CRITICAL", "WARNING"].includes(item.severity));
+  const criticalCount = activeIncidents.filter((item) => item.severity === "CRITICAL").length;
+  const primaryAction = activeIncidents.length ? `Investigate ${criticalCount} critical and ${activeIncidents.length - criticalCount} warning Prism alert observations; verify affected workload impact.` : props.problemCollectors.length ? "Fix the failing collector, then rerun health collection." : openGates.length ? "Review open readiness gates before production claims." : "Export evidence or keep monitoring scheduled health checks.";
   return (
     <>
       <section className="triage-hero">
         <div>
           <p className="eyebrow">Operator Triage</p>
-          <h2>{props.run?.status ?? "UNKNOWN"}</h2>
+          <h2>Health not evaluated</h2>
           <p>{primaryAction}</p>
         </div>
         <div className="triage-actions">
@@ -1461,11 +1493,11 @@ function TriagePage(props: {
         </div>
       </section>
       <section className="triage-grid">
-        <TriageStep number="1" title="Is the estate healthy?" status={props.run?.status ?? "UNKNOWN"} detail={props.problemCollectors.length ? `${props.problemCollectors.length} collector issue(s) require attention.` : "No failing collectors are recorded."} action="Open health runs" onAction={() => props.onNavigate("runs")} />
+        <TriageStep number="1" title="Is the estate healthy?" status={inventoryHealthStatus(props.run)} detail={`Health not evaluated. ${props.problemCollectors.length} collection incident(s).`} action="Open health runs" onAction={() => props.onNavigate("runs")} />
         <TriageStep number="2" title="Is the data fresh?" status={lastRun?.age_seconds != null && lastRun.age_seconds < 24 * 60 * 60 ? "HEALTHY" : "WARNING"} detail={lastRun?.age_seconds != null ? `Latest run is ${formatAge(lastRun.age_seconds)} old.` : "No run history is available."} action="Review evidence" onAction={() => props.onNavigate("evidence")} />
         <TriageStep number="3" title="Which collector failed?" status={props.problemCollectors.length ? "WARNING" : "HEALTHY"} detail={props.problemCollectors[0]?.summary ?? "All latest collectors are healthy."} action="Open details" onAction={() => props.onNavigate("runs")} />
         <TriageStep number="4" title="What changed?" status={runChangeStatus(lastRun, previousRun)} detail={runChangeSummary(props.history)} action="View timeline" onAction={() => props.onNavigate("runs")} />
-        <TriageStep number="5" title="What should I do next?" status={props.problemCollectors.length || openGates.length ? "WARNING" : "HEALTHY"} detail={primaryAction} action={props.problemCollectors.length ? "Fix connection" : "Review gates"} onAction={() => props.onNavigate(props.problemCollectors.length ? "settings" : "settings")} />
+        <TriageStep number="5" title="What should I do next?" status={criticalCount ? "CRITICAL" : activeIncidents.length || props.problemCollectors.length || openGates.length ? "WARNING" : "UNKNOWN"} detail={primaryAction} action={activeIncidents.length ? "Open Prism incidents" : props.problemCollectors.length ? "Fix connection" : "Review gates"} onAction={() => props.onNavigate(activeIncidents.length ? "incidents" : "settings")} />
         <TriageStep number="6" title="Where is the evidence?" status={confidence.status} detail={`${confidence.label}: ${confidence.detail}`} action="Open evidence" onAction={() => props.onNavigate("evidence")} />
       </section>
       <DomainHealthGrid
@@ -1478,19 +1510,20 @@ function TriagePage(props: {
         <div>
           <PanelHeading title="Immediate Attention" description="Only the items an operator should act on first." />
           <div className="attention-list">
+            {activeIncidents.slice(0, 3).map((item) => <article className="attention-item" key={item.id}><StatusBadge status={item.severity === "CRITICAL" ? "CRITICAL" : "WARNING"} /><div><strong>{item.title}</strong><p>{item.source} · {item.triage.category}</p><button className="table-action" onClick={() => props.onNavigate("incidents")}>Open incident queue and recommended triage</button></div></article>)}
             {props.problemCollectors.map((collector) => (
-              <article className="attention-item" key={`${collector.endpoint_alias}-${collector.path}`}>
+              <article className="attention-item" key={`${collector.source}-${collector.endpoint_alias}-${collector.domain ?? "inventory"}-${collector.path}`}>
                 <StatusBadge status={collector.status} />
                 <div><strong>{collectorTitle(collector)}</strong><p>{collector.summary}</p><small>{collector.method} {collector.path} · HTTP {collector.status_code ?? "-"}</small></div>
               </article>
             ))}
-            {!props.problemCollectors.length && openGates.slice(0, 3).map((gate) => (
+            {!props.problemCollectors.length && !activeIncidents.length && openGates.slice(0, 3).map((gate) => (
               <article className="attention-item" key={gate.gate_id}>
                 <StatusBadge status={gateTone(gate.status)} />
                 <div><strong>{gate.name}</strong><p>{gate.summary}</p><small>{gate.evidence.join(", ")}</small></div>
               </article>
             ))}
-            {!props.problemCollectors.length && !openGates.length ? <div className="empty-state">No urgent operator actions are open.</div> : null}
+            {!props.problemCollectors.length && !activeIncidents.length && !openGates.length ? <div className="empty-state">No urgent operator actions are open.</div> : null}
           </div>
         </div>
         <div>
@@ -1499,7 +1532,7 @@ function TriagePage(props: {
             {props.history.slice(0, 5).map((item) => (
               <div className="timeline-item" key={`${item.run_id}-${item.generated_at}`}>
                 <Clock3 size={16} />
-                <div><strong>{item.status}</strong><p>{item.generated_at ? formatDate(item.generated_at) : "Unknown time"} · {item.cluster_count} cluster(s), {item.collector_failure_count} issue(s)</p></div>
+                <div><strong>{item.status}</strong><p>{item.generated_at ? formatDate(item.generated_at) : "Unknown time"} · {item.cluster_count} source observation(s), {item.collector_failure_count} issue(s)</p></div>
               </div>
             ))}
             {!props.history.length ? <div className="empty-state">No run timeline is available.</div> : null}
@@ -1512,7 +1545,7 @@ function TriagePage(props: {
 }
 
 function EstatePage(props: { run: InventoryRun | null }) {
-  const clusters = props.run?.clusters ?? [];
+  const clusters = props.run?.estate_entries ?? props.run?.clusters ?? [];
   const prismSources = new Set(clusters.map((cluster) => cluster.source)).size;
   const versions = new Set(clusters.map((cluster) => cluster.version).filter(Boolean)).size;
   const collectedAges = clusters
@@ -1522,25 +1555,26 @@ function EstatePage(props: { run: InventoryRun | null }) {
   return (
     <>
       <section className="visual-summary-grid">
-        <Metric icon={<Database size={22} />} label="Observed Clusters" value={clusters.length.toString()} tone={clusters.length ? "" : "unknown"} />
+        <Metric icon={<Database size={22} />} label="Known entity identities" value={new Set(clusters.map((cluster) => cluster.external_id)).size.toString()} tone={clusters.length ? "" : "unknown"} />
         <Metric icon={<Network size={22} />} label="Prism Sources" value={prismSources.toString()} tone={prismSources ? "" : "unknown"} />
-        <Metric icon={<History size={22} />} label="AOS Versions" value={versions.toString()} tone={versions > 1 ? "warning" : ""} />
+        <Metric icon={<History size={22} />} label="Reported versions (AOS / PC)" value={versions.toString()} tone={versions > 1 ? "warning" : ""} />
         <Metric icon={<Clock3 size={22} />} label="Newest Evidence" value={newestAge != null ? formatAge(newestAge) : "No evidence"} tone={newestAge == null ? "unknown" : ""} />
       </section>
       <section className="panel">
-        <PanelHeading title="Cluster Estate Map" description="At-a-glance cluster cards first, with normalized raw-evidence details below." />
+        <PanelHeading title="Cluster Estate Map" description="Failed inventory sources retain their last successful snapshot. Unavailable entries are historical, not current health evidence." />
         <div className="cluster-card-grid">
           {clusters.map((cluster) => (
             <article className="cluster-card" key={`${cluster.source}-${cluster.external_id}`}>
               <div className="cluster-card-top">
                 <Database size={20} />
-                <StatusBadge status={cluster.state?.toLowerCase() === "complete" ? "HEALTHY" : "UNKNOWN"} />
+                <span className="status unknown">{cluster.availability === "UNAVAILABLE" ? "UNAVAILABLE · LAST KNOWN" : "HEALTH NOT EVALUATED"}</span>
               </div>
               <h3>{cluster.name}</h3>
               <p>{labelize(cluster.source)} · {cluster.version ?? "Version unknown"}</p>
               <dl>
-                <div><dt>State</dt><dd>{cluster.state ?? "-"}</dd></div>
+                <div><dt>Lifecycle</dt><dd>{clusterEstateStateLabel(cluster, props.run)}</dd></div>
                 <div><dt>Collected</dt><dd>{formatDate(cluster.collected_at)}</dd></div>
+                <div><dt>Evidence run</dt><dd title={cluster.evidence_run_id ?? props.run?.run_id}>{truncate(cluster.evidence_run_id ?? props.run?.run_id ?? "-")}</dd></div>
                 <div><dt>Artifact</dt><dd className="mono">{truncate(cluster.raw_artifact_sha256)}</dd></div>
               </dl>
             </article>
@@ -1551,12 +1585,12 @@ function EstatePage(props: { run: InventoryRun | null }) {
       <section className="panel">
         <PanelHeading title="Cluster Evidence Detail" description="Normalized from raw Prism payloads and linked back to artifact hashes." />
         <DataTable
-          columns={["Cluster", "Source", "Version", "State", "Collected"]}
+          columns={["Entity", "Source", "Version", "Lifecycle / availability", "Collected"]}
           rows={clusters.map((cluster) => [
             <span className="stacked"><strong>{cluster.name}</strong><small>{cluster.external_id}</small></span>,
             labelize(cluster.source),
             cluster.version ?? "-",
-            cluster.state ?? "-",
+            cluster.availability === "UNAVAILABLE" ? "Unavailable · last known" : cluster.state ?? "Not reported",
             formatDate(cluster.collected_at)
           ])}
           emptyText="No normalized clusters are available."
@@ -1570,9 +1604,9 @@ function RunsPage(props: { run: InventoryRun | null; history: HealthRunHistoryIt
   const [manualRunMessage, setManualRunMessage] = useState<string | null>(null);
   const [manualRunBusy, setManualRunBusy] = useState(false);
   const [collectorFilter, setCollectorFilter] = useState<"all" | "failed">("all");
-  const visibleCollectors = collectorFilter === "failed"
+  const visibleCollectors = groupAuthenticationFailures(collectorFilter === "failed"
     ? props.run?.collectors.filter((collector) => collector.status !== "HEALTHY") ?? []
-    : props.run?.collectors ?? [];
+    : props.run?.collectors ?? []);
   const collectorCount = props.run?.collectors.length ?? 0;
   const healthyCollectors = props.run?.collectors.filter((collector) => collector.status === "HEALTHY").length ?? 0;
   const latestHistory = props.history[0] ?? null;
@@ -1586,7 +1620,7 @@ function RunsPage(props: { run: InventoryRun | null; history: HealthRunHistoryIt
         { method: "POST" },
         props.authToken
       );
-      setManualRunMessage(`Started run ${result.run_id} with status ${result.status}.`);
+      setManualRunMessage(`Completed collection ${result.run_id} with collection status ${result.status}. Infrastructure health is not evaluated.`);
       await props.onRunComplete();
     } catch (runError) {
       setManualRunMessage(runError instanceof Error ? runError.message : "Unable to start health run.");
@@ -1610,9 +1644,9 @@ function RunsPage(props: { run: InventoryRun | null; history: HealthRunHistoryIt
       <section className="panel">
         <PanelHeading title="Run Details" description="Latest local inventory evidence with collector timing, endpoint and remediation context." />
         <div className="run-visual-grid">
-          <RunVisualCard label="Latest Verdict" value={props.run?.status ?? "UNKNOWN"} status={props.run?.status ?? "UNKNOWN"} detail={props.run ? formatDate(props.run.generated_at) : "No run available"} />
+          <RunVisualCard label="Collection outcome" value={collectionStatus(props.run)} status={collectionStatus(props.run)} detail={props.run ? `${formatDate(props.run.generated_at)} · health not evaluated` : "No run available"} />
           <RunVisualCard label="Collector Coverage" value={`${healthyCollectors}/${collectorCount}`} status={collectorCount && healthyCollectors === collectorCount ? "HEALTHY" : "WARNING"} detail={`${collectorCount - healthyCollectors} issue(s)`} />
-          <RunVisualCard label="Clusters Covered" value={`${props.run?.clusters.length ?? 0}`} status={props.run?.clusters.length ? "HEALTHY" : "UNKNOWN"} detail="Inventory evidence only" />
+          <RunVisualCard label="Current source observations" value={`${props.run?.clusters.length ?? 0}`} status="UNKNOWN" detail="Inventory evidence only; health not evaluated" />
           <RunVisualCard label="Last Run Age" value={latestHistory?.age_seconds != null ? formatAge(latestHistory.age_seconds) : "-"} status={latestHistory?.age_seconds != null && latestHistory.age_seconds < 24 * 60 * 60 ? "HEALTHY" : "WARNING"} detail={latestHistory?.run_type ?? "No history"} />
         </div>
         <dl className="details-grid">
@@ -1620,6 +1654,7 @@ function RunsPage(props: { run: InventoryRun | null; history: HealthRunHistoryIt
           <div><dt>Generated</dt><dd>{props.run ? formatDate(props.run.generated_at) : "-"}</dd></div>
           <div><dt>Maturity</dt><dd>{props.run?.maturity ?? "-"}</dd></div>
           <div><dt>Read only</dt><dd>{props.run?.read_only ? "Yes" : "No"}</dd></div>
+          <div><dt>Run TLS verification</dt><dd>{props.run?.tls_mode ?? "Not recorded (legacy evidence)"}</dd></div>
           <div><dt>NCC enabled</dt><dd>{props.run?.ncc_enabled ? "Yes" : "No"}</dd></div>
           <div><dt>SSH enabled</dt><dd>{props.run?.ssh_enabled ? "Yes" : "No"}</dd></div>
         </dl>
@@ -1629,15 +1664,16 @@ function RunsPage(props: { run: InventoryRun | null; history: HealthRunHistoryIt
         </div>
         <div className="collector-matrix">
           {visibleCollectors.map((collector) => (
-            <article className={`collector-tile ${collector.status.toLowerCase()}`} key={`${collector.endpoint_alias}-${collector.path}`}>
+            <article className={`collector-tile ${collector.status.toLowerCase()}`} key={`${collector.source}-${collector.endpoint_alias}-${collector.domain ?? "inventory"}-${collector.path}`}>
               <div><strong>{collector.endpoint_alias}</strong><small>{collector.method} {collector.path}</small></div>
-              <StatusBadge status={collector.status} />
+              <span className={`status ${collector.status.toLowerCase()}`}>{collector.status === "HEALTHY" ? "COLLECTED" : collector.status}</span>
               <div className="mini-meter"><span style={{ width: `${collector.status === "HEALTHY" ? 100 : 35}%` }} /></div>
               <p>{collector.summary}</p>
             </article>
           ))}
         </div>
-        <CollectorTable collectors={visibleCollectors} />
+        <AuthenticationIncidents collectors={props.run?.collectors ?? []} />
+        <details><summary>Individual collector diagnostics</summary><CollectorTable collectors={props.run?.collectors ?? []} /></details>
       </section>
       <section className="panel">
         <PanelHeading title="Run History" description="Recent health evidence with age, collector failures and local evidence paths." />
@@ -1646,7 +1682,7 @@ function RunsPage(props: { run: InventoryRun | null; history: HealthRunHistoryIt
             <article className={`history-card ${item.status.toLowerCase()}`} key={`${item.run_id}-${item.generated_at}`}>
               <StatusBadge status={item.status} />
               <strong>{item.generated_at ? formatDate(item.generated_at) : "Unknown time"}</strong>
-              <span>{item.cluster_count} cluster(s) · {item.collector_count} collector(s)</span>
+              <span>{item.cluster_count} source observation(s) · {item.collector_count} collector(s)</span>
               <small>{item.collector_failure_count ? `${item.collector_failure_count} issue(s)` : "No collector issues"}</small>
             </article>
           ))}
@@ -1656,7 +1692,7 @@ function RunsPage(props: { run: InventoryRun | null; history: HealthRunHistoryIt
           rows={props.history.map((item) => [
             item.generated_at ? formatDate(item.generated_at) : "-",
             <StatusBadge status={item.status} />,
-            `${item.cluster_count} cluster(s), ${item.collector_count} collector(s)`,
+            `${item.cluster_count} source observation(s), ${item.collector_count} collector(s)`,
             item.collector_failure_count ? `${item.collector_failure_count} issue(s)` : "None",
             item.path ? <span className="mono">{safePathLabel(item.path)}</span> : "-"
           ])}
@@ -1669,20 +1705,20 @@ function RunsPage(props: { run: InventoryRun | null; history: HealthRunHistoryIt
 
 function FindingsPage(props: { run: InventoryRun | null }) {
   const [filter, setFilter] = useState<"all" | HealthStatus>("all");
-  const observations = props.run?.observations ?? [];
+  const observations = groupedFindingObservations(props.run);
   const visibleObservations = filter === "all" ? observations : observations.filter((observation) => observation.status === filter);
   const severities: HealthStatus[] = ["CRITICAL", "WARNING", "UNKNOWN", "HEALTHY"];
   return (
     <section className="panel">
-      <PanelHeading title="Findings" description="Severity-grouped observations from the latest run, with filters for support triage." />
+      <PanelHeading title="Collection Diagnostics" description="Collection observations; successful requests do not establish infrastructure health. Authentication failures are grouped by endpoint below; individual checks remain available." />
       <div className="severity-grid">
         {severities.map((severity) => {
           const count = observations.filter((observation) => observation.status === severity).length;
           return (
             <button className={`severity-card ${severity.toLowerCase()} ${filter === severity ? "active" : ""}`} type="button" onClick={() => setFilter(severity)} key={severity}>
-              <StatusBadge status={severity} />
+              <span className={`status ${severity.toLowerCase()}`}>{severity === "HEALTHY" ? "COLLECTED" : severity}</span>
               <strong>{count}</strong>
-              <span>{labelize(severity.toLowerCase())}</span>
+              <span>{severity === "HEALTHY" ? "Collected" : labelize(severity.toLowerCase())}</span>
             </button>
           );
         })}
@@ -1691,7 +1727,7 @@ function FindingsPage(props: { run: InventoryRun | null }) {
         <button className={filter === "all" ? "primary-button" : "secondary-button"} type="button" onClick={() => setFilter("all")}>All</button>
         {severities.map((severity) => (
           <button className={filter === severity ? "primary-button" : "secondary-button"} type="button" onClick={() => setFilter(severity)} key={severity}>
-            {severity} ({observations.filter((observation) => observation.status === severity).length})
+            {severity === "HEALTHY" ? "COLLECTED" : severity} ({observations.filter((observation) => observation.status === severity).length})
           </button>
         ))}
       </div>
@@ -1699,7 +1735,7 @@ function FindingsPage(props: { run: InventoryRun | null }) {
         columns={["Check", "Status", "Source", "Summary"]}
         rows={visibleObservations.map((observation) => [
           observation.check_id,
-          <StatusBadge status={observation.status} />,
+          <span className={`status ${observation.status.toLowerCase()}`}>{observation.status === "HEALTHY" ? "COLLECTED" : observation.status}</span>,
           labelize(observation.source),
           observation.summary
         ])}
@@ -2819,15 +2855,16 @@ function ReadinessPage(props: { report: SecurityReadinessReport | null }) {
   const gates = props.report?.gates ?? [];
   const passCount = gates.filter((gate) => gate.status === "PASS").length;
   const blockedCount = gates.filter((gate) => gate.status === "BLOCKED").length;
+  const incompleteCount = gates.filter((gate) => gate.status !== "PASS").length;
   const warningCount = gates.filter((gate) => gate.status === "WARNING").length;
   return (
     <section className="panel">
       <PanelHeading title="Readiness Gates" description="Production approval remains blocked until these controls are closed and evidenced." />
       <div className="visual-summary-grid compact-visual">
         <RunVisualCard label="Passed" value={passCount.toString()} status="HEALTHY" detail={`${gates.length} total gate(s)`} />
-        <RunVisualCard label="Blocked" value={blockedCount.toString()} status={blockedCount ? "CRITICAL" : "HEALTHY"} detail="Blocks production claims" />
+        <RunVisualCard label="Incomplete gates" value={incompleteCount.toString()} status={!gates.length ? "UNKNOWN" : incompleteCount ? "WARNING" : "HEALTHY"} detail={incompleteCount || !gates.length ? "Production not approved" : "All listed gates passed"} />
         <RunVisualCard label="Warnings" value={warningCount.toString()} status={warningCount ? "WARNING" : "HEALTHY"} detail="Needs evidence or closure" />
-        <RunVisualCard label="Maturity" value={props.report?.maturity ?? "-"} status={blockedCount || warningCount ? "WARNING" : "HEALTHY"} detail="Readiness posture" />
+        <RunVisualCard label="Maturity" value={props.report?.maturity ?? "Unknown"} status={!gates.length ? "UNKNOWN" : incompleteCount || blockedCount || warningCount ? "WARNING" : "HEALTHY"} detail="Implementation is not UAT approval" />
       </div>
       <DataTable
         columns={["Gate", "Status", "Summary", "Evidence"]}
@@ -3204,10 +3241,10 @@ function EvidenceStep(props: { icon: React.ReactNode; label: string; status: Hea
 function CollectorTable(props: { collectors: Collector[] }) {
   return (
     <DataTable
-      columns={["Collector", "Status", "HTTP", "Summary"]}
+      columns={["Collector", "Collection status", "HTTP", "Summary"]}
       rows={props.collectors.map((collector) => [
         `${collector.endpoint_alias} - ${collector.method} ${collector.path}`,
-        <StatusBadge status={collector.status} />,
+        <span className={`status ${collector.status.toLowerCase()}`}>{collector.status === "HEALTHY" ? "COLLECTED" : collector.status}</span>,
         collector.status_code?.toString() ?? "-",
         collector.summary
       ])}
@@ -3511,6 +3548,46 @@ function gateTone(value: string): HealthStatus {
   return "UNKNOWN";
 }
 
+function clusterEstateStatus(cluster: Cluster, run: InventoryRun | null): HealthStatus {
+  const explicitState = normalizeClusterLifecycleState(cluster.state);
+  if (explicitState) {
+    return explicitState;
+  }
+  return hasHealthyClusterEvidence(cluster, run) ? "HEALTHY" : "UNKNOWN";
+}
+
+function clusterEstateStateLabel(cluster: Cluster, run: InventoryRun | null) {
+  if (cluster.availability === "UNAVAILABLE") return "Unavailable · last known";
+  if (cluster.state) {
+    return cluster.state;
+  }
+  return "Lifecycle not reported";
+}
+
+function normalizeClusterLifecycleState(state: string | null): HealthStatus | null {
+  const normalized = state?.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  if (["complete", "completed", "healthy", "up", "available", "ready"].includes(normalized)) {
+    return "HEALTHY";
+  }
+  if (["warning", "degraded", "partial"].includes(normalized)) {
+    return "WARNING";
+  }
+  if (["critical", "failed", "error", "down"].includes(normalized)) {
+    return "CRITICAL";
+  }
+  return "UNKNOWN";
+}
+
+function hasHealthyClusterEvidence(cluster: Cluster, run: InventoryRun | null) {
+  if (run?.status !== "HEALTHY") {
+    return false;
+  }
+  return run.collectors.some((collector) => collector.status === "HEALTHY" && collector.source === cluster.source);
+}
+
 function yesNo(value: boolean) {
   return value ? "Yes" : "No";
 }
@@ -3528,10 +3605,10 @@ function evidenceConfidence(support: SupportStatus | null): { status: HealthStat
   if (support.latest_run.age_seconds != null && support.latest_run.age_seconds > 24 * 60 * 60) {
     return { status: "WARNING", label: "Stale", detail: "Latest evidence is older than 24 hours." };
   }
-  if (support.mode.tls_mode === "insecure_skip_verify") {
-    return { status: "WARNING", label: "Live Prism / lab TLS", detail: "Read-only Prism evidence with TLS verification disabled." };
+  if (support.latest_run.tls_mode !== "strict") {
+    return { status: "WARNING", label: "TLS unverified", detail: support.latest_run.tls_mode === "insecure_skip_verify" ? "Latest collection bypassed TLS verification." : "Latest run did not record TLS verification mode." };
   }
-  return { status: "HEALTHY", label: "Live Prism", detail: "Read-only Prism evidence with strict TLS." };
+  return { status: "HEALTHY", label: "Collection verified", detail: "Fresh, complete collection with recorded strict TLS; infrastructure health and UAT remain unverified." };
 }
 
 function operationalDomains(run: InventoryRun | null, support: SupportStatus | null): OperationalDomain[] {
@@ -3544,9 +3621,9 @@ function operationalDomains(run: InventoryRun | null, support: SupportStatus | n
     {
       id: "inventory",
       label: "Inventory Collection",
-      status: domainStatus(inventoryCollectors, run?.status ?? "UNKNOWN"),
-      value: `${run?.clusters.length ?? 0} cluster(s)`,
-      detail: inventoryCollectors.length ? `${inventoryCollectors.filter((collector) => collector.status === "HEALTHY").length}/${inventoryCollectors.length} collector(s) healthy; latest evidence ${evidenceAge}.` : "Run a health check to collect Prism inventory.",
+      status: !inventoryCollectors.length ? "UNKNOWN" : runIsStale(run) ? "OVERDUE" : domainStatus(inventoryCollectors, "UNKNOWN"),
+      value: `${run?.clusters.length ?? 0} source observation(s)`,
+      detail: inventoryCollectors.length ? `${inventoryCollectors.filter((collector) => collector.status === "HEALTHY").length}/${inventoryCollectors.length} collection requests succeeded; latest evidence ${evidenceAge}.` : "Run a health check to collect Prism inventory.",
       coverage: inventoryCoverage || (collectorCount ? Math.round((healthyCollectors / collectorCount) * 100) : 0),
       evidence: "Collected from configured Prism read-only probes.",
       action: "Review runs",
@@ -3584,14 +3661,16 @@ function domainCollectorCard(
   const healthy = collectors.filter((collector) => collector.status === "HEALTHY").length;
   const itemCount = collectors.reduce((total, collector) => total + (collector.item_count ?? 0), 0);
   const issue = collectors.find((collector) => collector.status !== "HEALTHY");
+  const uniqueIds = new Set(collectors.flatMap((collector) => collector.resource_ids ?? []));
+  const completeIds = collectors.every((collector) => collector.status === "HEALTHY" && collector.resource_ids?.length === collector.item_count);
   return {
     id,
     label,
-    status: domainStatus(collectors, "UNKNOWN"),
+    status: "UNKNOWN",
     value: `${healthy}/${collectors.length} ready`,
-    detail: issue?.summary ?? `${itemCount} ${id} record(s) captured from configured Prism endpoint(s).`,
+    detail: issue?.summary ?? (id === "storage" && completeIds ? `${uniqueIds.size} unique containers · ${itemCount} PE/PC observations` : `${itemCount} ${id} source observation(s); uniqueness not established.`),
     coverage: collectorCoverage(collectors),
-    evidence: `Latest run includes ${collectors.length} ${id} collector artifact(s).`,
+    evidence: `Health not evaluated. ${collectors.length} collection artifact(s); evidence ${runIsStale(run) ? "stale or age unknown" : "fresh"}.`,
     action,
     actionPage
   };
@@ -3603,23 +3682,6 @@ function collectorsForDomain(run: InventoryRun | null, domain: string) {
 
 function collectorCoverage(collectors: Collector[]) {
   return collectors.length ? Math.round((collectors.filter((collector) => collector.status === "HEALTHY").length / collectors.length) * 100) : 0;
-}
-
-function domainStatus(collectors: Collector[], fallback: HealthStatus): HealthStatus {
-  if (!collectors.length) {
-    return fallback;
-  }
-  const statuses = collectors.map((collector) => collector.status);
-  if (statuses.includes("CRITICAL")) {
-    return "CRITICAL";
-  }
-  if (statuses.includes("UNKNOWN")) {
-    return "UNKNOWN";
-  }
-  if (statuses.includes("WARNING") || statuses.includes("OVERDUE")) {
-    return "WARNING";
-  }
-  return "HEALTHY";
 }
 
 function domainIcon(domainId: OperationalDomain["id"]) {
@@ -3646,7 +3708,7 @@ function runChangeSummary(history: HealthRunHistoryItem[]) {
   const clusterDelta = latest.cluster_count - previous.cluster_count;
   const failureDelta = latest.collector_failure_count - previous.collector_failure_count;
   const changes = [
-    clusterDelta === 0 ? "clusters unchanged" : `${clusterDelta > 0 ? "+" : ""}${clusterDelta} cluster(s)`,
+    clusterDelta === 0 ? "source observation count unchanged" : `${clusterDelta > 0 ? "+" : ""}${clusterDelta} source observation(s)`,
     failureDelta === 0 ? "collector issues unchanged" : `${failureDelta > 0 ? "+" : ""}${failureDelta} collector issue(s)`
   ];
   if (latest.status !== previous.status) {
@@ -3684,12 +3746,23 @@ function dashboardReason(primaryIssue: Collector | null, support: SupportStatus 
 function collectorTitle(collector: Collector) {
   const source = labelize(collector.source);
   if (collector.status_code === 401 || collector.status_code === 403) {
-    return `${source} collector authentication failed`;
+    return `${source} ${collector.status_code === 401 ? "authentication failed" : "access forbidden"}`;
   }
   if (collector.status === "UNKNOWN") {
     return `${source} collector is unknown`;
   }
   return `${source} collector attention`;
+}
+
+function AuthenticationIncidents(props: { collectors: Collector[] }) {
+  const incidents = groupAuthenticationFailures(props.collectors.filter((collector) => collector.status_code === 401 || collector.status_code === 403));
+  if (!incidents.length) return null;
+  return <div className="attention-list" aria-label="Endpoint access incidents">{incidents.map((incident) => (
+    <article className="attention-item" key={`${incident.source}-${incident.endpoint_alias}-${incident.status_code}`}>
+      <StatusBadge status="UNKNOWN" />
+      <div><strong>{incident.endpoint_alias} · HTTP {incident.status_code}</strong><p>{incident.summary}</p><small>Individual collector results are retained below for diagnostics.</small></div>
+    </article>
+  ))}</div>;
 }
 
 function permissionList(value: string) {

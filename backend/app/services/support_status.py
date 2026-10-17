@@ -70,6 +70,7 @@ def latest_run_summary(evidence_dir: str | Path) -> dict[str, Any]:
         "run_type": "manual-demo" if path.name.startswith("manual-health-run-") else "inventory",
         "status": payload.get("status", "UNKNOWN"),
         "generated_at": generated_at or None,
+        "tls_mode": payload.get("tls_mode", "unknown"),
         "age_seconds": int((datetime.now(UTC) - parsed_generated_at).total_seconds()) if parsed_generated_at else None,
         "path": public_artifact_ref(path),
         "collector_failures": collector_failures,
@@ -91,7 +92,13 @@ def runtime_warnings(settings: Settings, latest: dict[str, Any]) -> list[str]:
     if settings.demo_mode:
         warnings.append("Demo mode is active. Manual health checks use synthetic data and do not contact Prism.")
     if settings.tls_mode == "insecure_skip_verify":
-        warnings.append("TLS verification is disabled. Evidence is lab-only and not production approval evidence.")
+        warnings.append("Current connection TLS verification is disabled. Evidence is lab-only and not production approval evidence.")
+    if latest.get("available"):
+        run_tls = latest.get("tls_mode", "unknown")
+        if run_tls == "unknown":
+            warnings.append("Latest run TLS mode was not recorded; legacy evidence cannot prove certificate verification.")
+        elif run_tls != "strict":
+            warnings.append("Latest run bypassed TLS certificate verification; it is not production approval evidence.")
     if latest.get("available") and latest.get("age_seconds") is not None and latest["age_seconds"] > 24 * 60 * 60:
         warnings.append("Latest health evidence is older than 24 hours.")
     if latest.get("collector_failures"):

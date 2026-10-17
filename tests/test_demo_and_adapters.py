@@ -146,6 +146,9 @@ def test_inventory_run_collects_and_normalizes_clusters(
         if "/api/nutanix/v3/clusters/list" in request.full_url:
             assert request.get_method() == "POST"
             return InventoryFakeResponse(pc_body)
+        if "/api/clustermgmt/v4.0.b2/config/storage-containers" in request.full_url:
+            assert request.get_method() == "GET"
+            return InventoryFakeResponse(b'{"data":[{"extId":"container-1"}],"metadata":{"totalAvailableResults":1}}')
         if request.full_url.startswith("https://pc.example.invalid:9440/api/nutanix/v3/"):
             assert request.get_method() == "POST"
             return InventoryFakeResponse(domain_body)
@@ -204,7 +207,8 @@ def test_prism_element_inventory_falls_back_to_v3_cluster_list(
 
     report = NutanixReadOnlyAdapter(settings).collect_inventory(run_id="pe-fallback-run")
 
-    assert report.status == HealthStatus.WARNING
+    # Inventory fallback succeeds, but capacity still returns UNKNOWN/401.
+    assert report.status == HealthStatus.UNKNOWN
     assert report.collectors[0].status == HealthStatus.HEALTHY
     assert report.clusters[0].name == "PE Cluster"
     assert any(collector.domain == "capacity" and collector.status == HealthStatus.UNKNOWN for collector in report.collectors)
@@ -238,6 +242,10 @@ def test_domain_collectors_use_configured_prism_connections(monkeypatch: pytest.
 
     def fake_urlopen(request, timeout, context):  # noqa: ANN001
         calls.append((request.full_url, request.get_method(), request.headers.get("Authorization")))
+        if "/api/clustermgmt/v4.0.b2/config/storage-containers" in request.full_url:
+            assert request.get_method() == "GET"
+            assert request.data is None
+            return InventoryFakeResponse(b'{"data":[{"extId":"container-1"}],"metadata":{"totalAvailableResults":1}}')
         if "/api/nutanix/v3/clusters/list" in request.full_url:
             return InventoryFakeResponse(pc_cluster_body)
         return InventoryFakeResponse(domain_body)
@@ -259,6 +267,7 @@ def test_domain_collectors_use_configured_prism_connections(monkeypatch: pytest.
     assert all(collector.raw_artifact for collector in report.collectors)
     assert all(auth_header for _, _, auth_header in calls)
     called_urls = "\n".join(url for url, _, _ in calls)
-    assert "/api/nutanix/v3/storage_containers/list" in called_urls
+    assert "/api/clustermgmt/v4.0.b2/config/storage-containers?$limit=100" in called_urls
+    assert "/api/nutanix/v3/storage_containers/list" not in called_urls
     assert "/api/nutanix/v3/hosts/list" in called_urls
     assert "/api/nutanix/v3/subnets/list" in called_urls

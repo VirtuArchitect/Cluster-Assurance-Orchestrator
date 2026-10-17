@@ -85,7 +85,7 @@ def test_health_run_history_summarizes_recent_evidence(tmp_path) -> None:
     assert str(tmp_path) not in str(payload)
 
 
-def test_default_schedule_preview_uses_latest_inventory_targets(tmp_path) -> None:
+def test_default_schedule_preview_uses_saved_schedule_without_synthetic_locks(tmp_path) -> None:
     evidence_file = tmp_path / "inventory-run-20260101T000000Z.json"
     evidence_file.write_text(
         '{"status": "UNKNOWN", "clusters": [{"external_id": "cluster-a"}]}',
@@ -98,8 +98,10 @@ def test_default_schedule_preview_uses_latest_inventory_targets(tmp_path) -> Non
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["schedule"]["target_cluster_ids"] == ["cluster-a"]
-    assert payload["occurrences"][0]["blocked_cluster_ids"] == ["cluster-a"]
+    assert payload["schedule"]["target_cluster_ids"] == ["no-lab-inventory"]
+    assert payload["active_locks"] == []
+    assert payload["occurrences"][0]["blocked_cluster_ids"] == []
+    assert payload["occurrences"][0]["status"] == "unknown"
 
 
 def test_schedule_preview_endpoint_accepts_explicit_schedule() -> None:

@@ -776,11 +776,38 @@ nav button:focus-visible {
 
 .run-visual-card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px 12px;
   padding: 14px;
   border-left: 4px solid var(--border-strong);
 }
+
+.run-visual-card > .status {
+  justify-self: start;
+}
+
+.monitoring-summary { display: flex; gap: 20px; align-items: center; justify-content: space-between; }
+.monitoring-summary h2 { margin-top: 0; }
+.monitoring-toolbar { display: flex; flex-wrap: wrap; gap: 16px; align-items: end; margin: 16px 0; }
+.monitoring-toolbar label { display: flex; flex-direction: column; gap: 6px; font-weight: 600; }
+.monitoring-toolbar label:has(input[type="checkbox"]) { flex-direction: row; align-items: center; }
+.monitoring-toolbar input[type="checkbox"] { width: auto; }
+.monitoring-counters { display: flex; flex-wrap: wrap; gap: 20px; padding: 16px 0; }
+.monitoring-warning { padding: 12px 16px; border-left: 4px solid var(--warning); background: var(--surface); margin: 12px 0; }
+.monitoring-table-wrap { overflow-x: auto; max-width: 100%; }
+.monitoring-table { width: 100%; border-collapse: collapse; text-align: left; }
+.monitoring-table th, .monitoring-table td { padding: 14px 12px; border-bottom: 1px solid var(--border); vertical-align: top; min-width: 140px; overflow-wrap: anywhere; }
+.monitoring-table th { background: var(--surface); }
+.monitoring-table small { display: block; margin-top: 6px; color: var(--muted); }
+.incident-title { border: 0; background: transparent; padding: 0; color: var(--text); text-align: left; font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
+.incident-title:focus-visible, .monitoring-table summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
+.incident-evidence dd { margin: 4px 0 12px; overflow-wrap: anywhere; }
+.incident-evidence dt { font-weight: 700; }
+.incident-detail h3 { margin-top: 28px; }
+.incident-detail pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 360px; overflow-y: auto; }
+.incident-message { white-space: pre-wrap; overflow-wrap: anywhere; }
+.triage-instructions li { margin: 16px 0; }
+@media (max-width: 700px) { .monitoring-summary { flex-direction: column; align-items: stretch; } }
 
 .run-visual-card.healthy {
   border-left-color: var(--success);

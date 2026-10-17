@@ -11,11 +11,11 @@ def build_readiness_report(settings: Settings) -> SecurityReadinessReport:
             name="TLS verification",
             status=GateStatus.PASS if settings.tls_mode == "strict" else GateStatus.WARNING,
             summary=(
-                "Strict TLS verification is active."
+                "Current effective collection configuration requires strict TLS; historical run TLS is reported separately in evidence."
                 if settings.tls_mode == "strict"
-                else "Lab evidence was captured with certificate verification bypassed."
+                else "Current effective collection configuration bypasses TLS verification; production approval is blocked."
             ),
-            evidence=["CAO_TLS_MODE"],
+            evidence=["effective saved connections / CAO_TLS_MODE", "/api/v1/support/status"],
         ),
         ReadinessGate(
             gate_id="read-only",
@@ -61,7 +61,7 @@ def build_readiness_report(settings: Settings) -> SecurityReadinessReport:
         ),
     ]
     return SecurityReadinessReport(
-        maturity="lab validated" if settings.environment == "lab" else "simulated",
+        maturity="simulated" if settings.demo_mode else "read-only collection; UAT unverified",
         gates=gates,
         roles=default_rbac_matrix(),
         open_risks=[

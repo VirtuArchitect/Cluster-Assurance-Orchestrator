@@ -48,7 +48,7 @@ def test_security_readiness_reports_open_production_gates() -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["maturity"] == "lab validated"
+    assert payload["maturity"] == "read-only collection; UAT unverified"
     gates = {gate["gate_id"]: gate for gate in payload["gates"]}
     assert gates["tls-mode"]["status"] == "WARNING"
     assert gates["read-only"]["status"] == "PASS"

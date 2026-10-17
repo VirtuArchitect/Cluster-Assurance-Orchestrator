@@ -151,6 +151,7 @@ class NutanixReadOnlyAdapter:
 
         return InventoryRunReport(
             run_id=run_id,
+            tls_mode=self.settings.tls_mode,
             read_only=self.settings.read_only_mode,
             ncc_enabled=self.settings.enable_ncc,
             ssh_enabled=self.settings.enable_ssh,
@@ -336,14 +337,18 @@ class NutanixReadOnlyAdapter:
             )
 
         try:
-            item_count = count_payload_items(response.body)
+            item_count = (
+                count_pc_storage_containers(response.body)
+                if source == InventorySource.PRISM_CENTRAL and spec.domain == "storage"
+                else count_payload_items(response.body)
+            )
         except (ValueError, TypeError, json.JSONDecodeError) as error:
             return InventoryCollectorResult(
                 source=source,
                 endpoint_alias=endpoint.alias,
                 domain=spec.domain,
                 status=HealthStatus.UNKNOWN,
-                summary=f"{endpoint.alias} {spec.domain} payload could not be interpreted.",
+                summary=f"{endpoint.alias} {spec.domain} payload is malformed or incomplete; collection is not verified.",
                 path=spec.path,
                 method=spec.method,
                 status_code=response.status_code,
@@ -363,6 +368,7 @@ class NutanixReadOnlyAdapter:
             status_code=response.status_code,
             elapsed_ms=response.elapsed_ms,
             item_count=item_count,
+            resource_ids=storage_resource_ids(response.body) if spec.domain == "storage" else [],
             raw_artifact=raw_artifact,
         )
 
@@ -610,9 +616,8 @@ def pc_domain_collectors() -> list[DomainCollectorSpec]:
         DomainCollectorSpec(
             domain="storage",
             check_id="HC-STORAGE",
-            path="/api/nutanix/v3/storage_containers/list",
-            method="POST",
-            kind="storage_container",
+            path="/api/clustermgmt/v4.0.b2/config/storage-containers?$limit=100",
+            method="GET",
         ),
         DomainCollectorSpec(
             domain="hardware",
@@ -677,11 +682,7 @@ def domain_check_id(domain: str) -> str:
 
 
 def domain_observation_status(status: HealthStatus) -> HealthStatus:
-    if status == HealthStatus.HEALTHY:
-        return HealthStatus.HEALTHY
-    if status == HealthStatus.CRITICAL:
-        return HealthStatus.CRITICAL
-    return HealthStatus.WARNING
+    return status
 
 
 def count_payload_items(body: bytes) -> int:
@@ -698,3 +699,34 @@ def count_payload_items(body: bytes) -> int:
         if isinstance(value, list):
             return len(value)
     return 1 if payload else 0
+
+
+def count_pc_storage_containers(body: bytes) -> int:
+    """Validate the v4 list envelope; never count an error or partial page as success."""
+    payload = json.loads(body.decode("utf-8"))
+    if not isinstance(payload, dict) or not isinstance(payload.get("data"), list):
+        raise ValueError("Expected a v4 storage-container list")
+    items = payload["data"]
+    if not all(isinstance(item, dict) and (item.get("containerExtId") or item.get("extId")) for item in items):
+        raise ValueError("Invalid storage-container records")
+    metadata = payload.get("metadata")
+    if not isinstance(metadata, dict):
+        raise ValueError("Missing v4 response metadata")
+    total = metadata.get("totalAvailableResults")
+    if type(total) is not int or total != len(items):
+        raise ValueError("Storage-container pagination is incomplete")
+    if any(flag.get("name") in {"hasError", "isTruncated"} and flag.get("value") is True
+           for flag in metadata.get("flags", []) if isinstance(flag, dict)):
+        raise ValueError("Storage-container response reports an error or truncation")
+    if any(link.get("rel") == "next" for link in metadata.get("links", []) if isinstance(link, dict)):
+        raise ValueError("Additional storage-container pages are required")
+    return len(items)
+
+
+def storage_resource_ids(body: bytes) -> list[str]:
+    payload = json.loads(body)
+    items = payload.get("data", payload.get("entities", payload.get("storage_containers", [])))
+    return list(dict.fromkeys(str(item.get("containerExtId") or item.get("extId") or
+                                 item.get("storage_container_uuid") or item.get("uuid"))
+                             for item in items if isinstance(item, dict) and
+                             (item.get("containerExtId") or item.get("extId") or item.get("storage_container_uuid") or item.get("uuid"))))

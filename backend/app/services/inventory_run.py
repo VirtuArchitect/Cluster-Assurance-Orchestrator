@@ -40,6 +40,38 @@ def read_latest_inventory_evidence(evidence_dir: str | Path) -> dict[str, object
     return json.loads(candidates[0].read_text(encoding="utf-8"))
 
 
+def estate_entries(evidence_dir: str | Path, latest: dict[str, object]) -> list[dict[str, object]]:
+    """Project historical source observations without changing current run evidence.
+
+    Only a failed inventory source carries forward its last successful snapshot.
+    A successful empty response removes old entries; a removed source is not retained.
+    """
+    entries = [dict(item, availability="CURRENT", evidence_run_id=latest.get("run_id"))
+               for item in latest.get("clusters", []) if isinstance(item, dict)]
+    failed = {c.get("source") for c in latest.get("collectors", [])
+              if isinstance(c, dict) and c.get("domain", "inventory") == "inventory"
+              and c.get("status") != "HEALTHY"}
+    for path in sorted(Path(evidence_dir).glob("inventory-run-*.json"), reverse=True):
+        if not failed:
+            break
+        try:
+            previous = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if previous.get("run_id") == latest.get("run_id"):
+            continue
+        if str(previous.get("generated_at", "")) > str(latest.get("generated_at", "")):
+            continue
+        successful = {c.get("source") for c in previous.get("collectors", [])
+                      if isinstance(c, dict) and c.get("domain", "inventory") == "inventory"
+                      and c.get("status") == "HEALTHY"} & failed
+        entries.extend(dict(item, availability="UNAVAILABLE", evidence_run_id=previous.get("run_id"))
+                       for item in previous.get("clusters", [])
+                       if isinstance(item, dict) and item.get("source") in successful)
+        failed -= successful
+    return entries
+
+
 def inventory_run_history(evidence_dir: str | Path, limit: int = 20) -> list[dict[str, object]]:
     target_dir = Path(evidence_dir)
     candidates = sorted(

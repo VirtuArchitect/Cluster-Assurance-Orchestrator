@@ -7,6 +7,19 @@ versions is not implied. No SDK or runtime dependency was added.
 
 ## Operator workflow
 
+The dashboard starts with an operations watch, separate **PE cluster operations**
+and **PC management plane** cards, and up to five prioritized open alert observations.
+Critical alerts precede warnings; each action opens its exact incident. Source cards
+open the queue filtered to PE or PC. Counts remain source observations, not deduplicated
+faults. Inventory success and administration/readiness are shown separately.
+
+Use **Refresh PE & PC monitoring** to collect alerts and events directly from the
+dashboard. Current alert posture requires evidence no older than two minutes and
+complete alerts and events feeds for the relevant source. Missing, incomplete or stale
+evidence displays **Current status unknown**, with saved priorities retained. Even
+**No critical or warning alerts** is an alert result, not proof of complete cluster health.
+Dashboard auto-refresh is optional, every 60 seconds, and stops when the dashboard closes.
+
 1. Open **Prism Incidents** and select **Collect alerts and events**. Operators need
    `run_read_only_inventory`; viewers can inspect saved evidence with `view_evidence`.
 2. Check all four source/feed rows. Incomplete pagination, malformed records, HTTP
@@ -21,7 +34,7 @@ versions is not implied. No SDK or runtime dependency was added.
 5. Related events share an affected entity and fall within one hour of the source alert
    occurrence. This is contextual correlation, not proof of causation.
 
-Optional automatic collection runs every 60 seconds **only while this view is open**.
+Optional automatic collection runs every 60 seconds **only while the selected dashboard or incident view is open**.
 With automatic collection off, the view refreshes saved evidence every 30 seconds;
 this does not contact Prism. Ages advance every 15 seconds and monitoring snapshots
 older than two minutes are labelled stale. These are application defaults, not

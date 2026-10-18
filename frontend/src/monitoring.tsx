@@ -39,13 +39,13 @@ export function MonitoringSummary({ report, onOpen }: { report: MonitoringReport
   </section>;
 }
 
-export function MonitoringPage(props: { authToken: string; initial: MonitoringReport | null; onUpdate: (report: MonitoringReport) => void; canCollect: boolean }) {
+export function MonitoringPage(props: { authToken: string; initial: MonitoringReport | null; onUpdate: (report: MonitoringReport) => void; canCollect: boolean; initialTarget?: { id?: string; source?: string } }) {
   const [report, setReport] = useState(props.initial ?? emptyReport);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(props.initialTarget?.id ?? null);
   const [query, setQuery] = useState("");
   const [state, setState] = useState("open");
   const [severity, setSeverity] = useState("all");
-  const [source, setSource] = useState("all");
+  const [source, setSource] = useState(props.initialTarget?.source ?? "all");
   const [auto, setAuto] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

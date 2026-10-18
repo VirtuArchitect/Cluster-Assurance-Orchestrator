@@ -1,4 +1,23 @@
 import type { Collector, InventoryRun, HealthStatus, Observation } from "./main";
+import type { MonitoringReport } from "./monitoring";
+
+export function monitoringPosture(report: MonitoringReport | null, source?: string, now = Date.now()) {
+  const feeds = (report?.collectors ?? []).filter((feed) => !source || feed.source === source);
+  const age = ageSeconds(report?.generated_at, now);
+  const fresh = !!report?.available && age != null && age <= 120;
+  const complete = (source ? [source] : ["prism-central", "prism-element"]).every((name) =>
+    ["alerts", "events"].every((kind) => feeds.some((feed) => feed.source === name && feed.kind === kind && feed.complete && feed.status === "COLLECTED")));
+  const open = (report?.incidents ?? []).filter((incident) => (!source || incident.source === source) && incident.availability === "CURRENT" && !incident.resolved);
+  const rank = (severity: string) => ({ CRITICAL: 0, WARNING: 1, UNKNOWN: 2, INFO: 3 }[severity] ?? 2);
+  const incidents = [...open].sort((a, b) => rank(a.severity) - rank(b.severity) || (Date.parse(b.last_occurrence_at ?? "") || 0) - (Date.parse(a.last_occurrence_at ?? "") || 0));
+  const critical = open.filter((incident) => incident.severity === "CRITICAL").length;
+  const warning = open.filter((incident) => incident.severity === "WARNING").length;
+  const unknown = open.some((incident) => !["CRITICAL", "WARNING", "INFO"].includes(incident.severity));
+  const verified = fresh && complete;
+  const label = !verified ? "Current status unknown" : critical ? "Critical alerts reported" : warning ? "Warnings reported" : unknown ? "Review unclassified alerts" : "No critical or warning alerts";
+  const tone = !verified ? "unknown" : critical ? "critical" : warning ? "warning" : unknown ? "unknown" : "clear";
+  return { feeds, age, fresh, complete, verified, incidents, critical, warning, label, tone };
+}
 
 export function hasCollectionPermission(user: { permissions?: string[] } | null): boolean {
   return user?.permissions?.some((permission) => ["all_permissions", "run_read_only_inventory"].includes(permission)) ?? false;

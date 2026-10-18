@@ -227,7 +227,16 @@ def correlated_events(incident: dict, events: list) -> list:
 
 def triage_for(incident: dict) -> dict:
     text = f"{incident['title']} {incident['message']}".lower()
-    if any(word in text for word in ("configured resource", "memory availability", "pc_vm_resource", "pc_vm_memory")):
+    cvm_home = bool(re.search(r"/home(?:/[^\s,;]*)?(?=$|[\s,;.:])", text)) and bool(re.search(r"\bcvm\b|controller\s+vm|controller\s+virtual\s+machine", text)) and any(word in text for word in ("disk space", "disk usage", "filesystem", "file system", "partition", "inode", "space usage"))
+    if cvm_home:
+        category, checks = "CVM /home filesystem", [
+            ("Confirm the affected CVM and /home mount from the original Prism alert; an authorized administrator can inspect df -h /home and df -i /home on that CVM", "The mount, byte usage, inode usage and available space are recorded; compare with the alert's reported threshold and installed-release guidance", "Separate exhausted bytes from exhausted inodes; capture outputs and the CVM identity for support. This console does not run SSH commands"),
+            ("Identify growth within the affected filesystem using a scoped, read-only directory usage inspection; review recent support bundles, uploads, logs and upgrade activity", "The growing directory and its owner are identified without traversing other mounts or treating Stargate data as disposable", "Use an approved version-matched diagnostic procedure; large recursive scans can add load. If ownership or cleanup eligibility is unclear, engage Nutanix Support"),
+            ("Compare filesystem totals with directory usage and review existing disk_usage_check and inode_usage_check results where available", "Byte/inode pressure is explained and relevant checks agree with the affected mount", "If totals disagree, ask support to inspect open-but-deleted files and mount visibility. Do not restart services to release space without an approved procedure"),
+            ("Prepare a reviewed cleanup or correction using the installed AOS/NCC guidance and the original alert's KB", "Only explicitly approved obsolete artifacts are removed or relocated, with evidence retained and the source of recurring growth corrected", "Do not delete arbitrary files, logs, snapshots, or /home/nutanix/data content; do not resize CVM disks or restart/reboot services as an automatic fix. Escalate near exhaustion, rapid growth or service impact"),
+            ("After an approved correction, recheck df -h /home and df -i /home and obtain fresh PE/PC alerts plus the relevant targeted check", "Usage is below the applicable alert threshold with stable headroom, the source alert is resolved, and the operator has verified service impact", "If pressure persists or recurs, escalate with timestamps, mount/usage outputs, growth evidence, alert/check IDs and installed versions"),
+        ]
+    elif any(word in text for word in ("configured resource", "memory availability", "pc_vm_resource", "pc_vm_memory")):
         category, checks = "Prism Central sizing and memory", [
             ("Compare PC allocation and deployment size with the installed release requirements", "vCPU, memory and deployment topology meet the supported sizing guidance", "Capture allocated resources, PC version and the source health check; prepare a reviewed sizing correction"),
             ("Inspect current memory pressure and related PC service alerts", "PC services are stable and the relevant memory/sizing check passes", "Escalate impact and sizing evidence; do not resize or restart PC automatically"),
@@ -281,7 +290,7 @@ def triage_for(incident: dict) -> dict:
     kb_ids = sorted(set(re.findall(r"\bKB[-\s]?(\d{3,6})\b", references, re.I)))
     return {"category": category, "basis": "Curated symptom-based guidance; not a confirmed root cause",
             "steps": [{"check": c, "expected": e, "if_failed": f} for c, e, f in checks],
-            "resolution_criteria": ["Prism explicitly reports the source alert resolved", "Fresh collection succeeds for the affected source", "Relevant targeted check passes and workload impact is verified by the operator"],
+            "resolution_criteria": (["Affected CVM /home byte and inode usage are below applicable thresholds with stable headroom", "The relevant disk/inode check passes and recurring growth is addressed"] if cvm_home else []) + ["Prism explicitly reports the source alert resolved", "Fresh collection succeeds for the affected source", "Relevant targeted check passes and workload impact is verified by the operator"],
             "escalation": "Escalate critical impact, lost resiliency, repeated failures or unclear cause to the incident owner / Nutanix support.",
             "safety": "Read-only investigation. No automatic reboot, service restart, disk removal, deletion, or Prism acknowledgement/resolution.",
             "kb_links": [f"https://portal.nutanix.com/kb/{kb}" for kb in kb_ids],

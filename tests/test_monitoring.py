@@ -172,3 +172,29 @@ def test_vendor_parameters_and_diagnostic_context_are_rendered_without_evaluatio
     assert item["source_versions"]["software"] == "7.0.1.15"
     assert "never-render-this" not in json.dumps(item)
     assert render_vendor_text("<b>{name}</b><br>{__class__}", {"name":"Node A"}) == "Node A\n{__class__}"
+
+
+@pytest.mark.parametrize("source", ["prism-element", "prism-central"])
+def test_cvm_home_filesystem_triage_for_both_prism_sources(source):
+    item = {"source": source, "title": "Disk space usage high for /home on Controller VM 192.0.2.1", "message": "Space usage on /home partition exceeded the configured threshold. Refer KB-1540."}
+    result = triage_for(item)
+    assert result["category"] == "CVM /home filesystem"
+    steps = json.dumps(result["steps"])
+    assert "df -h /home" in steps and "df -i /home" in steps
+    assert "open-but-deleted" in steps
+    assert "Do not delete arbitrary files" in steps
+    assert "snapshots" in steps and "Do not restart services" in steps
+    assert "rebuild reservation" not in steps
+    assert any("byte and inode" in criterion for criterion in result["resolution_criteria"])
+    assert result["kb_links"] == ["https://portal.nutanix.com/kb/1540"]
+
+
+@pytest.mark.parametrize("title,message,expected", [
+    ("Storage container capacity high", "Cluster capacity utilization high", "Capacity"),
+    ("Disk space usage high for /home on Prism Central VM", "Prism Central partition usage", "Capacity"),
+    ("CVM rebooted", "CVM restarted with working directory /home", "Services and availability"),
+    ("CVM filesystem inode usage high", "/home/nutanix has high inode usage", "CVM /home filesystem"),
+    ("Disk space usage high on CVM", "/home2 partition usage high", "Capacity"),
+])
+def test_cvm_filesystem_routing_is_specific(title, message, expected):
+    assert triage_for({"title": title, "message": message})["category"] == expected

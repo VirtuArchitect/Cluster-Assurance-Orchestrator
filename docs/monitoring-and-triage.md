@@ -74,3 +74,24 @@ unverified. TLS bypass remains visible and disqualifies evidence from production
 - [Prism v2 API reference](https://www.nutanix.dev/api_reference/apis/prism_v2.html)
 - [Nutanix support portal](https://portal.nutanix.com/)
 - [Nutanix Support Guide](https://www.nutanix.com/content/dam/nutanix/resources/support/nutanix-support-guide.pdf)
+
+## CVM /home filesystem alerts
+
+CVM/Controller VM space or inode alerts naming `/home` (including its subdirectories)
+receive filesystem-specific triage before generic capacity/hardware matching. Both
+PE and PC source observations retain their identities. PCVM alerts and storage
+container capacity alerts do not inherit this CVM-specific runbook.
+
+The guidance asks an authorized administrator to record `df -h /home` and
+`df -i /home`, investigate scoped directory growth, compare filesystem and directory
+totals, and involve support for open-but-deleted files or unclear cleanup ownership.
+Commands are operator guidance only; collection continues to use Prism APIs with
+SSH and NCC execution disabled. No fixed universal usage threshold, deletion command,
+CVM disk expansion or automatic restart is prescribed. Recovery requires stable byte
+and inode headroom, targeted check results, a source-resolved alert and service validation.
+
+Use the original alert's KB and installed-release documentation to approve cleanup.
+Nutanix's support catalogue identifies [KB 1540](https://portal.nutanix.com/kb/1540)
+for CVM `/home` fullness and [KB 1532](https://portal.nutanix.com/kb/1532) for inode
+checks (portal access required). The UI continues to link only KB IDs supplied by the
+source alert; it does not inject these references into unrelated incidents.

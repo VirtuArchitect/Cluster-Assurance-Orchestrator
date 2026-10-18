@@ -13,7 +13,8 @@ type Incident = PrismEvent & {
   source_versions?: { software: string | null; ncc: string | null }; unresolved_parameters?: string[];
   history: Array<{ at: string; state: string; severity: string; run_id: string; evidence?: Evidence }>;
   triage: { category: string; basis: string; steps: Array<{ check: string; expected: string; if_failed: string }>;
-    resolution_criteria: string[]; escalation: string; safety: string; kb_links: string[]; reference: string; applicability: string };
+    resolution_criteria: string[]; escalation: string; safety: string; kb_links: string[]; reference: string; applicability: string;
+    curated_references?: Array<{ title: string; url: string; basis: string }> };
 };
 type Feed = { source: string; source_key: string; kind: string; status: string; complete: boolean; count: number; error: string | null; pages: Evidence[] };
 export type MonitoringReport = {
@@ -162,6 +163,7 @@ function IncidentDetail({ incident: i, onBack }: { incident: Incident; onBack: (
     <ol className="triage-instructions">{i.triage.steps.map((step, n) => <li key={n}><strong>{step.check}</strong><p>Expected: {step.expected}</p><p>If not: {step.if_failed}</p></li>)}</ol>
     <details><summary>Vendor-provided possible causes and metric details</summary><pre>{JSON.stringify({ possible_causes: i.vendor_possible_causes, details: i.vendor_details }, null, 2)}</pre></details>
     <p>{i.triage.kb_links.map((link) => <a key={link} href={link} target="_blank" rel="noreferrer">Nutanix KB {link.split("/").at(-1)} </a>)}<a href={i.triage.reference} target="_blank" rel="noreferrer">Nutanix Support Portal</a></p>
+    {i.triage.curated_references?.length ? <section aria-label="Curated investigation references"><h3>Curated investigation references</h3>{i.triage.curated_references.map((ref) => <div key={ref.url}><a href={ref.url} target="_blank" rel="noreferrer">{ref.title}</a><p>{ref.basis}</p></div>)}</section> : null}
     <h3>When to escalate</h3><p>{i.triage.escalation}</p><p className="monitoring-warning">{i.triage.safety}</p>
     <h3>Resolution and validation criteria</h3><ul>{i.triage.resolution_criteria.map((text) => <li key={text}>{text}</li>)}</ul><p>Prism resolution alone does not confirm workload recovery. No operator recovery validation has been recorded by this read-only view.</p>
     <h3>Incident history</h3><ol>{i.history.map((h, n) => <li key={n}>{date(h.at)} · {h.state.replaceAll("_", " ")} · {h.severity} · run <code>{h.run_id}</code>{h.evidence ? <details><summary>Transition evidence</summary><EvidenceDetail evidence={h.evidence} /></details> : null}</li>)}</ol>

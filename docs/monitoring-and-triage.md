@@ -95,3 +95,19 @@ Nutanix's support catalogue identifies [KB 1540](https://portal.nutanix.com/kb/1
 for CVM `/home` fullness and [KB 1532](https://portal.nutanix.com/kb/1532) for inode
 checks (portal access required). The UI continues to link only KB IDs supplied by the
 source alert; it does not inject these references into unrelated incidents.
+
+## PC microservices infrastructure (A200335)
+
+PC alerts with the native check ID 200335/A200335 or the specific "Microservices
+Infrastructure is not in healthy state" message receive a dedicated runbook. It
+separates PC management-plane impact from PE/workload state, then checks deployment
+and upgrade tasks, resources, dependencies and version-supported component diagnostics.
+All diagnostic commands remain operator/support guidance; the console executes none.
+Recovery includes independent microservices health and affected PC function checks.
+
+A separately labelled curated reference links [KB 20379](https://portal.nutanix.com/kb/20379),
+listed in [Nutanix's published KB catalogue](https://next.nutanix.com/how-it-works-22/new-kb-articles-published-on-week-ending-november-29-2025-45075).
+The catalogue identifies a false-positive case for A200335; affected-version details
+and remediation require authenticated portal review. The console does not infer
+applicability, downgrade severity, suppress the alert or resolve it. Curated links
+are separate from KB IDs supplied by the source alert.

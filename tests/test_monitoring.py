@@ -198,3 +198,29 @@ def test_cvm_home_filesystem_triage_for_both_prism_sources(source):
 ])
 def test_cvm_filesystem_routing_is_specific(title, message, expected):
     assert triage_for({"title": title, "message": message})["category"] == expected
+
+
+@pytest.mark.parametrize("title,check_id", [
+    ("Microservices Infrastructure is not in healthy state.", "pc-id::200335"),
+    ("Platform health alert", "pc-id::A200335"),
+])
+def test_pc_microservices_has_specific_triage_and_no_false_positive_inference(title, check_id):
+    result = triage_for({"source": "prism-central", "title": title, "message": "Inspect PC health", "check_id": check_id})
+    assert result["category"] == "Prism Central microservices infrastructure"
+    steps = json.dumps(result["steps"])
+    for term in ["direct PE access", "deployment/upgrade", "byte/inode", "DNS", "certificate", "service/pod", "KB 20379", "insufficient to declare a false positive", "do not delete pods"]:
+        assert term in steps
+    assert result["kb_links"] == []
+    assert result["curated_references"][0]["url"] == "https://portal.nutanix.com/kb/20379"
+    assert any("Independent PC microservices" in criterion for criterion in result["resolution_criteria"])
+
+
+@pytest.mark.parametrize("source,title,check_id", [
+    ("prism-element", "Microservices Infrastructure is not in healthy state", "pc-id::200335"),
+    ("prism-central", "Microservice restarted", "pc-id::200336"),
+    ("prism-central", "Service unavailable", "pc-id::1200335"),
+])
+def test_microservices_runbook_does_not_capture_unrelated_alerts(source, title, check_id):
+    result = triage_for({"source": source, "title": title, "message": "Service health warning", "check_id": check_id})
+    assert result["category"] != "Prism Central microservices infrastructure"
+    assert result["curated_references"] == []

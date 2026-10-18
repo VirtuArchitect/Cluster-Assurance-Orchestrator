@@ -5,7 +5,7 @@ import ts from "typescript";
 
 const source = readFileSync(new URL("../src/operational.ts", import.meta.url), "utf8");
 const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } }).outputText;
-const { hasCollectionPermission, ageSeconds, groupAuthenticationFailures, groupedFindingObservations, collectionStatus, inventoryHealthStatus } = await import(`data:text/javascript;base64,${Buffer.from(js).toString("base64")}`);
+const { monitoringPosture, hasCollectionPermission, ageSeconds, groupAuthenticationFailures, groupedFindingObservations, collectionStatus, inventoryHealthStatus } = await import(`data:text/javascript;base64,${Buffer.from(js).toString("base64")}`);
 const collector = (domain, code = 401, alias = "pc") => ({ source: "prism_central", endpoint_alias: alias, domain, status_code: code, status: code === 200 ? "HEALTHY" : "UNKNOWN" });
 
 test("authentication failures group by endpoint and code; raw results stay intact", () => {
@@ -56,4 +56,43 @@ test("older login profiles without permissions are safe and never grant collecti
   assert.equal(hasCollectionPermission({ permissions: ["view_evidence"] }), false);
   assert.equal(hasCollectionPermission({ permissions: ["run_read_only_inventory"] }), true);
   assert.equal(hasCollectionPermission({ permissions: ["all_permissions"] }), true);
+});
+
+const now = Date.parse("2026-10-18T10:00:00Z");
+const feed = (source, kind) => ({ source, kind, complete: true, status: "COLLECTED" });
+const report = () => ({ available: true, generated_at: new Date(now - 30_000).toISOString(), collectors: ["prism-central", "prism-element"].flatMap(source => ["alerts", "events"].map(kind => feed(source, kind))), incidents: [] });
+const incident = (source, severity, extra = {}) => ({ source, severity, availability: "CURRENT", resolved: false, last_occurrence_at: "2026-10-18T09:00:00Z", ...extra });
+
+test("operator posture keeps PE and PC separate and critical alerts first", () => {
+  const data = report();
+  data.incidents = [incident("prism-element", "WARNING"), incident("prism-central", "CRITICAL"), incident("prism-element", "INFO"), incident("prism-element", "CRITICAL", { resolved: true })];
+  const pc = monitoringPosture(data, "prism-central", now);
+  const pe = monitoringPosture(data, "prism-element", now);
+  assert.equal(pc.label, "Critical alerts reported");
+  assert.equal(pc.critical, 1);
+  assert.equal(pe.label, "Warnings reported");
+  assert.equal(pe.critical, 0);
+  assert.equal(monitoringPosture(data, undefined, now).incidents[0].severity, "CRITICAL");
+});
+
+test("stale, absent, future and incomplete monitoring never declares current status", () => {
+  assert.equal(monitoringPosture(null, undefined, now).verified, false);
+  for (const generated_at of ["2020-01-01T00:00:00Z", "invalid", new Date(now + 120_000).toISOString()]) {
+    const state = monitoringPosture({ ...report(), generated_at }, undefined, now);
+    assert.equal(state.label, "Current status unknown");
+  }
+  const data = report();
+  data.collectors[0].complete = false;
+  assert.equal(monitoringPosture(data, "prism-central", now).verified, false);
+  assert.equal(monitoringPosture(data, "prism-element", now).verified, true);
+  assert.equal(monitoringPosture(data, undefined, now).verified, false);
+});
+
+test("no alerts and unknown severities remain explicit rather than proving health", () => {
+  const data = report();
+  assert.equal(monitoringPosture(data, undefined, now).label, "No critical or warning alerts");
+  data.incidents = [incident("prism-central", "UNKNOWN")];
+  assert.equal(monitoringPosture(data, undefined, now).label, "Review unclassified alerts");
+  data.incidents[0].availability = "UNAVAILABLE";
+  assert.equal(monitoringPosture(data, undefined, now).incidents.length, 0);
 });

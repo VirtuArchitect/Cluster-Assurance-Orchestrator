@@ -1,3 +1,4 @@
+import { OperatorDashboard } from "./operatorDashboard";
 import { MonitoringPage, MonitoringSummary, type MonitoringReport } from "./monitoring";
 import { hasCollectionPermission, ageSeconds, groupAuthenticationFailures, groupedFindingObservations, runIsStale, collectionStatus, inventoryHealthStatus, domainStatus } from "./operational";
 import React, { useEffect, useMemo, useState } from "react";
@@ -881,6 +882,7 @@ function App() {
     return storedTheme === "dark" ? "dark" : "light";
   });
   const [monitoring, setMonitoring] = useState<MonitoringReport | null>(null);
+  const [incidentTarget, setIncidentTarget] = useState<{ id?: string; source?: string }>({});
   const [, setClock] = useState(0);
   useEffect(() => {
     const timer = window.setInterval(() => setClock((clock) => clock + 1), 15_000);
@@ -1105,7 +1107,7 @@ function App() {
                       key={page.id}
                       className={activePage === page.id ? "active" : ""}
                       type="button"
-                      onClick={() => setActivePage(page.id)}
+                      onClick={() => { if (page.id === "incidents") setIncidentTarget({}); setActivePage(page.id); }}
                     >
                       <Icon size={18} />
                       <span>{page.label}</span>
@@ -1154,10 +1156,15 @@ function App() {
         {error ? <Banner tone="unknown" message={error} /> : null}
         {loading ? <Banner message="Loading local assurance data..." /> : null}
 
-        {["dashboard", "triage"].includes(activePage) ? <MonitoringSummary report={monitoring} onOpen={() => setActivePage("incidents")} /> : null}
-        {activePage === "incidents" ? (STATIC_DEMO ? <Banner message="Live Prism incident collection requires the appliance. No monitoring requests are sent from the static demo." /> : <MonitoringPage authToken={authToken} initial={monitoring} onUpdate={setMonitoring} canCollect={hasCollectionPermission(currentUser)} />) : null}
+        {activePage === "triage" ? <MonitoringSummary report={monitoring} onOpen={() => setActivePage("incidents")} /> : null}
+        {activePage === "incidents" ? (STATIC_DEMO ? <Banner message="Live Prism incident collection requires the appliance. No monitoring requests are sent from the static demo." /> : <MonitoringPage authToken={authToken} initial={monitoring} initialTarget={incidentTarget} onUpdate={setMonitoring} canCollect={hasCollectionPermission(currentUser)} />) : null}
         {activePage === "dashboard" ? (
           <DashboardPage
+            monitoring={monitoring}
+            authToken={authToken}
+            canCollect={!STATIC_DEMO && hasCollectionPermission(currentUser)}
+            onMonitoringUpdate={setMonitoring}
+            onOpenIncident={(id, source) => { setIncidentTarget({ id, source }); setActivePage("incidents"); }}
             run={run}
             problemCollectors={problemCollectors}
             schedule={schedule}
@@ -1298,165 +1305,28 @@ function LoginPage(props: { onSignIn: (username: string, password: string) => Pr
 }
 
 function DashboardPage(props: {
-  run: InventoryRun | null;
-  problemCollectors: Collector[];
-  schedule: SchedulePreview | null;
-  readiness: SecurityReadinessReport | null;
-  support: SupportStatus | null;
-  history: HealthRunHistoryItem[];
+  monitoring: MonitoringReport | null; authToken: string; canCollect: boolean;
+  onMonitoringUpdate: (report: MonitoringReport) => void;
+  onOpenIncident: (id?: string, source?: string) => void;
+  run: InventoryRun | null; problemCollectors: Collector[];
+  schedule: SchedulePreview | null; readiness: SecurityReadinessReport | null;
+  support: SupportStatus | null; history: HealthRunHistoryItem[];
   onNavigate: (page: PageId) => void;
 }) {
-  const blockedGates = props.readiness?.gates.filter((gate) => gate.status !== "PASS").length ?? 0;
-  const estateStatus = inventoryHealthStatus(props.run);
-  const primaryIssue = props.problemCollectors[0] ?? null;
-  const failedCollectors = props.problemCollectors;
-  const healthyCollectors = props.run?.collectors.filter((collector) => collector.status === "HEALTHY") ?? [];
-  const confidence = evidenceConfidence(props.support);
-  const changes = runChangeSummary(props.history);
   const nextRun = props.schedule?.occurrences[0];
-  const domains = operationalDomains(props.run, props.support);
-  return (
-    <>
-      <section className="ops-strip" aria-label="Operations overview">
-        <OpsStripItem label="Estate Health" status={estateStatus} value="Not evaluated" detail="Inventory does not establish infrastructure health" />
-        <OpsStripItem label="Collection" status={collectionStatus(props.run)} value={`${healthyCollectors.length}/${props.run?.collectors.length ?? 0}`} detail={`${failedCollectors.length} incident(s)`} />
-        <OpsStripItem label="Readiness" status={!props.readiness ? "UNKNOWN" : blockedGates ? "WARNING" : "HEALTHY"} value={!props.readiness ? "Unknown" : blockedGates ? `${blockedGates} incomplete` : "Listed gates passed"} detail="Production gate posture" />
-        <OpsStripItem label="Schedule" status={nextRun?.status.toLowerCase() === "ready" ? "HEALTHY" : "WARNING"} value={nextRun ? formatDate(nextRun.occurrence_at) : "None"} detail={nextRun?.reason ?? "No preview"} />
-        <OpsStripItem label="Evidence Trust" status={confidence.status} value={confidence.label} detail={confidence.detail} />
-      </section>
-      <section className={`ops-hero ${estateStatus.toLowerCase()}`} aria-label="Operational summary">
-        <div className="ops-hero-main">
-          <div className="ops-kicker">Current estate verdict</div>
-          <h2>Health not evaluated</h2>
-          <p>{dashboardReason(primaryIssue, props.support)}</p>
-          <div className="ops-chip-row">
-            <span className={`status ${estateStatus.toLowerCase()}`}>{estateStatus}</span>
-            <span className="ops-chip">{props.support?.mode.demo_mode ? "Demo mode" : props.support?.mode.environment ?? "Mode unknown"}</span>
-            <span className="ops-chip">{confidence.label}</span>
-            <span className="ops-chip">Last run {props.support?.latest_run.age_seconds != null ? formatAge(props.support.latest_run.age_seconds) : "unknown"}</span>
-            <span className="ops-chip">{changes}</span>
-          </div>
-        </div>
-        <div className="ops-next-actions">
-          <button className="primary-button" type="button" onClick={() => props.onNavigate("runs")}>
-            <Activity size={16} />
-            Run health check
-          </button>
-          <button className="secondary-button" type="button" onClick={() => props.onNavigate("settings")}>
-            <Network size={16} />
-            Test connection
-          </button>
-          <button className="secondary-button" type="button" onClick={() => props.onNavigate("triage")}>
-            <ArrowRight size={16} />
-            Open triage
-          </button>
-          <button className="secondary-button" type="button" onClick={() => props.onNavigate("evidence")}>
-            <FileJson size={16} />
-            Open evidence
-          </button>
-        </div>
-      </section>
-
-      <section className="ops-card-grid" aria-label="Operational cards">
-        <OperatorCard
-          icon={<AlertTriangle />}
-          title="Current Health"
-          status={estateStatus}
-          summary={primaryIssue ? primaryIssue.summary : "No failing collectors are recorded for the latest run."}
-          action="Open health runs"
-          onAction={() => props.onNavigate("runs")}
-        />
-        <OperatorCard
-          icon={<Database />}
-          title="Collection Coverage"
-          status={collectionStatus(props.run)}
-          summary={`${props.run?.clusters.length ?? 0} current source observations, ${healthyCollectors.length} successful collector(s), ${failedCollectors.length} incident(s).`}
-          action="View estate"
-          onAction={() => props.onNavigate("estate")}
-        />
-        <OperatorCard
-          icon={<CalendarClock />}
-          title="Schedule Status"
-          status={nextRun?.status.toLowerCase() === "ready" ? "HEALTHY" : nextRun?.status === "partial" ? "WARNING" : "UNKNOWN"}
-          summary={nextRun ? `${props.schedule?.schedule.name}: ${formatDate(nextRun.occurrence_at)}` : "No schedule preview is available."}
-          action="Manage schedules"
-          onAction={() => props.onNavigate("schedules")}
-        />
-        <OperatorCard
-          icon={<ShieldCheck />}
-          title="Readiness Gates"
-          status={!props.readiness ? "UNKNOWN" : blockedGates ? "WARNING" : "HEALTHY"}
-          summary={props.readiness ? `${blockedGates} gate(s) still need attention before production claims.` : "Readiness evidence is unavailable."}
-          action="Review gates"
-          onAction={() => props.onNavigate("settings")}
-        />
-      </section>
-
-      <DomainHealthGrid
-        title="Operational Domains"
-        description="Support engineers expect these views for Nutanix operations. Current evidence covers inventory; storage, hardware, network and capacity need dedicated collectors before they can be trusted."
-        domains={domains}
-        onNavigate={props.onNavigate}
-      />
-
-      <section className="panel">
-        <PanelHeading title="Collector Attention" description="Issues first, with likely operator action before supporting detail." />
-        <div className="collector-focus-list">
-          {failedCollectors.map((collector) => (
-            <article className="collector-focus" key={`${collector.source}-${collector.endpoint_alias}-${collector.domain ?? "inventory"}-${collector.path}`}>
-              <div>
-                <strong>{collectorTitle(collector)}</strong>
-                <p>{collector.summary}</p>
-                <small>{collector.method} {collector.path} Â· HTTP {collector.status_code ?? "-"}</small>
-              </div>
-              <span className={`status ${collector.status.toLowerCase()}`}>{collector.status}</span>
-            </article>
-          ))}
-          {!failedCollectors.length ? <div className="empty-state">No failing collectors are recorded for the latest run.</div> : null}
-        </div>
-        {healthyCollectors.length ? (
-          <div className="healthy-collector-strip">
-            <span>{healthyCollectors.length} healthy collector(s)</span>
-            {healthyCollectors.slice(0, 3).map((collector) => <span key={`${collector.source}-${collector.endpoint_alias}-${collector.domain ?? "inventory"}-${collector.path}`}>{collector.endpoint_alias}</span>)}
-          </div>
-        ) : null}
-      </section>
-
-      <section className="panel two-column">
-        <div>
-          <PanelHeading title="Next Scheduled Work" description="Calculated locally with idempotency keys and lock awareness." />
-          <dl className="details-grid compact">
-            <div><dt>Schedule</dt><dd>{props.schedule?.schedule.name ?? "-"}</dd></div>
-            <div><dt>Next Run</dt><dd>{nextRun ? formatDate(nextRun.occurrence_at) : "-"}</dd></div>
-            <div><dt>Locks</dt><dd>{props.schedule?.active_locks.length ?? 0}</dd></div>
-            <div><dt>Targets</dt><dd>{props.schedule?.schedule.target_cluster_ids.length ?? 0}</dd></div>
-          </dl>
-        </div>
-        <div>
-          <PanelHeading title="Readiness" description="Production claims stay blocked until gates are closed." />
-          <ul className="event-list">
-            {(props.readiness?.gates ?? []).slice(0, 4).map((gate) => (
-              <li key={gate.gate_id}><StatusBadge status={gateTone(gate.status)} /> {gate.name}</li>
-            ))}
-          </ul>
-        </div>
-      </section>
-
-      <section className="panel diagnostics-panel">
-        <PanelHeading title="Support Diagnostics" description="Compact runtime context for handover and evidence trust." />
-        {props.support?.warnings.length ? <Banner tone="warning" message={props.support.warnings[0]} /> : null}
-        <dl className="details-grid">
-          <div><dt>Mode</dt><dd>{props.support ? `${props.support.mode.environment}${props.support.mode.demo_mode ? " / demo" : ""}` : "-"}</dd></div>
-          <div><dt>API URL</dt><dd>{props.support?.api_url ?? "-"}</dd></div>
-          <div><dt>Config source</dt><dd>{props.support?.config_source ?? "-"}</dd></div>
-          <div><dt>Evidence storage</dt><dd>{props.support?.evidence_directory ? "Configured locally" : "-"}</dd></div>
-          <div><dt>Settings DB</dt><dd>{props.support?.admin_database ?? "-"}</dd></div>
-          <div><dt>Last run type</dt><dd>{props.support?.latest_run.run_type ?? "-"}</dd></div>
-          <div><dt>TLS mode</dt><dd>{props.support?.mode.tls_mode ?? "-"}</dd></div>
-        </dl>
-      </section>
-    </>
-  );
+  const blocked = props.readiness?.gates.filter((gate) => gate.status !== "PASS").length;
+  return <>
+    <OperatorDashboard report={props.monitoring} run={props.run} authToken={props.authToken}
+      canCollect={props.canCollect} onUpdate={props.onMonitoringUpdate} onOpen={props.onOpenIncident}
+      onDiagnostics={() => props.onNavigate("findings")} onEstate={() => props.onNavigate("estate")} onInventory={() => props.onNavigate("runs")} />
+    <details className="panel watch-admin"><summary>Administration &amp; readiness <span>Schedules, production gates and support diagnostics</span></summary>
+      <div className="watch-evidence-bar">
+        <div><h3>Schedule preview</h3><p>{nextRun ? formatDate(nextRun.occurrence_at) : "No scheduled occurrence"}</p><p>{nextRun?.reason ?? "No preview available"}</p><button className="secondary-button" onClick={() => props.onNavigate("schedules")}>Manage schedules</button></div>
+        <div><h3>Production readiness</h3><p>{blocked == null ? "Readiness not evaluated" : `${blocked} gates incomplete`}</p><button className="secondary-button" onClick={() => props.onNavigate("settings")}>Review readiness</button></div>
+        <div><h3>Support diagnostics</h3><p>{props.support?.mode.environment ?? "Mode unknown"} · {props.support?.mode.tls_mode ?? "TLS mode unknown"}</p><button className="secondary-button" onClick={() => props.onNavigate("evidence")}>Open evidence</button></div>
+      </div>
+    </details>
+  </>;
 }
 
 function TriagePage(props: {

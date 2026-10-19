@@ -13,6 +13,7 @@ from uuid import uuid4
 from app.adapters.nutanix import NutanixReadOnlyAdapter
 from app.core.config import Settings
 from app.services.artifacts import public_artifact_ref, write_raw_artifact
+from app.services.pc_diagnostics import collect_pc_diagnostics
 
 COLLECTION_LOCK = Lock()
 PAGE_SIZE = 100
@@ -61,6 +62,22 @@ def collect_monitoring(settings: Settings) -> dict:
         for incident in incidents:
             incident["triage"] = triage_for(incident)
             incident["related_events"] = correlated_events(incident, events)
+            incident.pop("deployment_diagnostics", None)
+        targets = [i for i in incidents if i["source"] == "prism-central" and not i["resolved"]
+                   and i["availability"] == "CURRENT" and i["triage"]["category"] == "Prism Central microservices infrastructure"]
+        if targets:
+            endpoints = adapter._configured_endpoints()
+            pc = next(e for e in endpoints if e.alias == "prism-central")
+            pe = next((e for e in endpoints if e.alias == "prism-element"), None)
+            diagnostics = collect_pc_diagnostics(adapter, pc, pe, run_id)
+            for incident in targets:
+                incident["deployment_diagnostics"] = diagnostics
+                if diagnostics["status"] == "BLOCKED":
+                    incident["triage"]["steps"].insert(0, {
+                        "check": "Review the observed CMSP deployment prerequisite blocker: " + "; ".join(diagnostics["blockers"]),
+                        "expected": "Required PE network settings are verified and the deployment precheck passes",
+                        "if_failed": diagnostics["next_actions"][0],
+                    })
         active = [item for item in incidents if item["availability"] == "CURRENT" and item["resolved"] is False]
         summary = {
             "critical": sum(item["severity"] == "CRITICAL" for item in active),
@@ -72,7 +89,7 @@ def collect_monitoring(settings: Settings) -> dict:
             "available": True, "run_id": run_id, "generated_at": now,
             "completed_at": datetime.now(UTC).isoformat(), "read_only": True,
             "tls_mode": settings.tls_mode, "ncc_enabled": False, "ssh_enabled": False,
-            "scope": "Prism alerts and events only; not a complete infrastructure-health evaluation",
+            "scope": "Prism alerts/events and targeted read-only PC deployment/PE prerequisite diagnostics; not a complete infrastructure-health evaluation",
             "status": "COLLECTED" if collectors and all(c["complete"] for c in collectors) else "UNKNOWN",
             "summary": summary, "collectors": collectors, "incidents": incidents, "events": events,
         }

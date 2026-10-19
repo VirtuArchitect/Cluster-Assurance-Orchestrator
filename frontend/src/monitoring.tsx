@@ -5,6 +5,11 @@ type Evidence = { method: string; path: string; http_status: number | null; arti
 type Entity = { id: string; name: string; type: string };
 type PrismEvent = { id: string; source_id: string; source: string; title: string; message: string; severity: string; occurred_at: string | null; affected_entities: Entity[]; evidence: Evidence };
 type Incident = PrismEvent & {
+  deployment_diagnostics?: { status: string; observed_at: string; run_id: string; conclusion: string; error?: string;
+    blockers?: string[]; next_actions: string[]; task_records_collected?: number; task_correlation?: string;
+    tasks: Array<{ uuid: string; operation_type: string; status: string; creation_time: string; last_update_time: string; progress_message?: string; error_detail?: string }>;
+    prerequisites: { pe_host: string; cluster_uuid: string; cluster_vip: string | null; data_services_ip: string | null; fqdn_status: string } | null;
+    evidence: Array<Evidence & { source: string }> };
   source_key: string; cluster_id: string; check_id: string; resolved: boolean; acknowledged: boolean;
   availability: string; lifecycle: string; first_seen_at: string; observed_at: string;
   last_occurrence_at: string | null; source_resolved_at: string | null; last_seen_run_id: string;
@@ -156,6 +161,26 @@ function IncidentDetail({ incident: i, onBack }: { incident: Incident; onBack: (
     <p>Business and workload impact has not been independently established. Confirm it with the affected service owner.</p>
     {i.vendor_guidance?.reported_impact ? <p>Prism-reported potential impact: {i.vendor_guidance.reported_impact}</p> : null}
     <h3>Source-reported diagnostic context</h3><p>Software version: {i.source_versions?.software ?? "Not reported"} · NCC: {i.source_versions?.ncc ?? "Not reported"}</p>
+    {i.triage.category === "Prism Central microservices infrastructure" ? <section className="panel" aria-label="Deployment blocker evidence">
+      <h3>Deployment blocker evidence</h3>
+      {!i.deployment_diagnostics ? <p>Deployment tasks and PE prerequisites have not been checked for this observation. Collect fresh evidence for an active source alert.</p> : <>
+        <p><strong>{i.deployment_diagnostics.status.replaceAll("_", " ")}</strong> · checked {date(i.deployment_diagnostics.observed_at)} ({age(i.deployment_diagnostics.observed_at)} ago){(ageSeconds(i.deployment_diagnostics.observed_at) ?? Infinity) > 120 ? " · STALE" : ""}</p>
+        <p>{i.deployment_diagnostics.conclusion}</p>
+        {i.deployment_diagnostics.error ? <p role="alert">Diagnostic collection problem: {i.deployment_diagnostics.error}</p> : null}
+        <ul>{i.deployment_diagnostics.blockers?.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul>
+        {i.deployment_diagnostics.prerequisites ? <dl className="details-grid">
+          <div><dt>Matched PE endpoint</dt><dd>{i.deployment_diagnostics.prerequisites.pe_host}</dd></div>
+          <div><dt>PE cluster ID</dt><dd>{i.deployment_diagnostics.prerequisites.cluster_uuid}</dd></div>
+          <div><dt>Cluster VIP</dt><dd>{i.deployment_diagnostics.prerequisites.cluster_vip || "Unset in PE response"}</dd></div>
+          <div><dt>Data Services IP</dt><dd>{i.deployment_diagnostics.prerequisites.data_services_ip || "Unset in PE response"}</dd></div>
+          <div><dt>Cluster FQDN</dt><dd>{i.deployment_diagnostics.prerequisites.fqdn_status}</dd></div>
+        </dl> : null}
+        <p>{i.deployment_diagnostics.task_records_collected ?? 0} task records collected. {i.deployment_diagnostics.task_correlation}</p>
+        {i.deployment_diagnostics.tasks.map((task) => <article key={task.uuid}><h4>{task.operation_type} · {task.status}</h4><p>ID {task.uuid} · started {date(task.creation_time)} · updated {date(task.last_update_time)}</p><p>{task.error_detail || task.progress_message}</p></article>)}
+        <h4>Recommended next actions</h4><ol>{i.deployment_diagnostics.next_actions.map((action) => <li key={action}>{action}</li>)}</ol>
+        <details><summary>Diagnostic request evidence</summary><p>Run {i.deployment_diagnostics.run_id}</p>{i.deployment_diagnostics.evidence.map((e, index) => <div key={index}><p>{e.source}</p><EvidenceDetail evidence={e} /></div>)}</details>
+      </>}
+    </section> : null}
     {i.vendor_description ? <p className="incident-message">{i.vendor_description}</p> : null}
     {i.vendor_guidance?.possible_cause ? <p>Prism-reported possible cause: {i.vendor_guidance.possible_cause}</p> : null}
     {i.vendor_guidance?.recommended_action ? <p>Prism-recommended action (review before execution): {i.vendor_guidance.recommended_action}</p> : null}

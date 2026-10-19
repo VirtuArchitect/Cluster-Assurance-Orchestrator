@@ -107,13 +107,14 @@ def test_complete_task_pagination(monkeypatch, tmp_path):
     assert [c[2]["offset"] for c in calls if c[0] == "POST"] == [0, 100]
 
 
-def test_monitoring_attaches_blocker_and_prioritizes_dashboard_check(monkeypatch, tmp_path):
+@pytest.mark.parametrize("resolved", [False, True])
+def test_monitoring_attaches_blocker_and_prioritizes_dashboard_check(monkeypatch, tmp_path, resolved):
     tasks, cluster = fixtures()
     base = install(monkeypatch, tasks, cluster)
     diagnostic_request = NutanixReadOnlyAdapter._request
     def request(self, endpoint, method, path, body=None):
         if "/alerts/" in path or "/events/" in path:
-            records = ([{"id": "alert", "severity": "kCritical", "resolved": False,
+            records = ([{"id": "alert", "severity": "kCritical", "resolved": resolved,
                 "message": "Microservices Infrastructure is not in healthy state", "check_id": "pc::200335"}]
                 if endpoint.alias == "prism-central" and "/alerts/" in path else [])
             return HttpResponse(status_code=200, body=json.dumps({"entities": records, "metadata": {"total_entities": len(records)}}).encode())
@@ -123,11 +124,14 @@ def test_monitoring_attaches_blocker_and_prioritizes_dashboard_check(monkeypatch
     incident = report["incidents"][0]
     assert incident["deployment_diagnostics"]["status"] == "BLOCKED"
     assert "prerequisite blocker" in incident["triage"]["steps"][0]["check"]
-    assert incident["lifecycle"] == "OPEN" and incident["resolved"] is False
+    assert incident["lifecycle"] == ("RESOLVED_IN_PRISM" if resolved else "OPEN")
+    assert incident["resolved"] is resolved
+    assert report["summary"]["open"] == (0 if resolved else 1)
     assert len(base) == 2
 
 
-def test_failed_refresh_does_not_reuse_previous_blocker_as_current(monkeypatch, tmp_path):
+@pytest.mark.parametrize("resolved", [False, True])
+def test_failed_refresh_does_not_reuse_previous_blocker_as_current(monkeypatch, tmp_path, resolved):
     tasks, cluster = fixtures()
     install(monkeypatch, tasks, cluster)
     diagnostic_request = NutanixReadOnlyAdapter._request
@@ -136,7 +140,7 @@ def test_failed_refresh_does_not_reuse_previous_blocker_as_current(monkeypatch, 
         if "/alerts/" in path or "/events/" in path:
             if mode[0] == "feed_failure" and endpoint.alias == "prism-central":
                 return HttpResponse(status_code=401, body=b'{}')
-            records = ([{"id": "alert", "severity": "kCritical", "resolved": False,
+            records = ([{"id": "alert", "severity": "kCritical", "resolved": resolved,
                         "message": "Microservices Infrastructure is not in healthy state"}]
                        if endpoint.alias == "prism-central" and "/alerts/" in path else [])
             return HttpResponse(status_code=200, body=json.dumps({"entities": records, "metadata": {"total_entities": len(records)}}).encode())

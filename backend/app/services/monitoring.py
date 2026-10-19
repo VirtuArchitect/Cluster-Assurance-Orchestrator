@@ -63,7 +63,9 @@ def collect_monitoring(settings: Settings) -> dict:
             incident["triage"] = triage_for(incident)
             incident["related_events"] = correlated_events(incident, events)
             incident.pop("deployment_diagnostics", None)
-        targets = [i for i in incidents if i["source"] == "prism-central" and not i["resolved"]
+        # Source resolution does not establish deployment recovery. Share one fresh
+        # endpoint-scoped diagnostic across current observations, including resolved ones.
+        targets = [i for i in incidents if i["source"] == "prism-central"
                    and i["availability"] == "CURRENT" and i["triage"]["category"] == "Prism Central microservices infrastructure"]
         if targets:
             endpoints = adapter._configured_endpoints()

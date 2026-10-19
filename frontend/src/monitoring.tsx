@@ -152,6 +152,12 @@ function IncidentDetail({ incident: i, onBack }: { incident: Incident; onBack: (
   return <section ref={detail} tabIndex={-1} className="panel incident-detail" aria-label="Incident detail">
     <button className="secondary-button" onClick={onBack}>Back to incident queue</button>
     <h2>{i.title}</h2><p><Badge value={i.severity} /> {i.source} · {i.availability === "CURRENT" ? i.lifecycle.replaceAll("_", " ") : i.availability.replaceAll("_", " ")}</p>
+    {i.triage.category === "Prism Central microservices infrastructure" ? <section className="monitoring-warning" aria-label="Recovery verification">
+      <h3>{i.deployment_diagnostics?.status === "BLOCKED" && (ageSeconds(i.deployment_diagnostics.observed_at) ?? Infinity) <= 120 ? "Recovery incomplete · prerequisites still blocked" : "Recovery not independently verified"}</h3>
+      <p>{i.resolved ? "Prism reports this alert resolved. " : "Prism has not reported this alert resolved. "}Alert resolution does not mean recovery is complete.</p>
+      <p>Review the fresh PE prerequisites and latest PC deployment/precheck evidence below. These checks describe the current configured endpoints, not proof that a task caused this alert. Runtime component health and affected PC functions still require independent validation.</p>
+      <p>Remaining actions: validate required PE network settings, obtain a successful supported deployment/precheck, verify microservices and affected services, then monitor for recurrence. This view records no operator recovery sign-off.</p>
+    </section> : null}
     <h3>What happened</h3><p className="incident-message">{i.message}</p>
     {i.unresolved_parameters?.length ? <p>Source parameters not supplied: {i.unresolved_parameters.join(", ")}. Inspect the original Prism record before interpreting these values.</p> : null}
     {i.availability !== "CURRENT" ? <p className="monitoring-warning">Last-known observation; current source state is unverified. Absence or collection failure is not resolution.</p> : null}
@@ -164,7 +170,7 @@ function IncidentDetail({ incident: i, onBack }: { incident: Incident; onBack: (
     <h3>Source-reported diagnostic context</h3><p>Software version: {i.source_versions?.software ?? "Not reported"} · NCC: {i.source_versions?.ncc ?? "Not reported"}</p>
     {i.triage.category === "Prism Central microservices infrastructure" ? <section className="panel" aria-label="Deployment blocker evidence">
       <h3>Deployment blocker evidence</h3>
-      {!i.deployment_diagnostics ? <p>Deployment tasks and PE prerequisites have not been checked for this observation. Collect fresh evidence for an active source alert.</p> : <>
+      {!i.deployment_diagnostics ? <p>Current deployment tasks and PE prerequisites are unverified. Collect alerts and events to refresh these checks, including for resolved A200335 observations.</p> : <>
         <p><strong>{i.deployment_diagnostics.status.replaceAll("_", " ")}</strong> · checked {date(i.deployment_diagnostics.observed_at)} ({age(i.deployment_diagnostics.observed_at)} ago){(ageSeconds(i.deployment_diagnostics.observed_at) ?? Infinity) > 120 ? " · STALE" : ""}</p>
         <p>{i.deployment_diagnostics.conclusion}</p>
         {i.deployment_diagnostics.error ? <p role="alert">Diagnostic collection problem: {i.deployment_diagnostics.error}</p> : null}

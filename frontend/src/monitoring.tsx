@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { ageSeconds } from "./operational";
+import { A200335RemediationPlan } from "./a200335RemediationPlan";
 
 type Evidence = { method: string; path: string; http_status: number | null; artifact?: string; sha256?: string; elapsed_ms?: number; size_bytes?: number };
 type Entity = { id: string; name: string; type: string };
@@ -181,6 +182,7 @@ function IncidentDetail({ incident: i, onBack }: { incident: Incident; onBack: (
         <details><summary>Diagnostic request evidence</summary><p>Run {i.deployment_diagnostics.run_id}</p>{i.deployment_diagnostics.evidence.map((e, index) => <div key={index}><p>{e.source}</p><EvidenceDetail evidence={e} /></div>)}</details>
       </>}
     </section> : null}
+    {i.triage.category === "Prism Central microservices infrastructure" ? <A200335RemediationPlan /> : null}
     {i.vendor_description ? <p className="incident-message">{i.vendor_description}</p> : null}
     {i.vendor_guidance?.possible_cause ? <p>Prism-reported possible cause: {i.vendor_guidance.possible_cause}</p> : null}
     {i.vendor_guidance?.recommended_action ? <p>Prism-recommended action (review before execution): {i.vendor_guidance.recommended_action}</p> : null}

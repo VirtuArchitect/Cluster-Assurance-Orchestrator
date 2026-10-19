@@ -139,3 +139,17 @@ Failed fresh diagnostics display UNKNOWN, never a retained blocker as current or
 cleared prerequisite. No address allocation, DNS, task retry/cancellation, precheck
 execution, reboot, SSH or NCC execution occurs. Use an approved change and supported
 recovery process before retrying a blocked deployment.
+
+## Informational A200335 remediation plan
+
+Microservices incidents include a UI-only remediation plan for PE network prerequisites.
+It requires fresh evidence, address/DNS approval, dependency and access checks, then
+staged VIP, optional FQDN, Data Services IP and supported deployment-recovery validation.
+Rollback distinguishes changes made before consumers depend on the addresses from
+recovery after CMSP or other services use them. Address placeholders are never filled
+with guessed lab values. The reference guide must be matched to the installed release.
+
+The plan is also visible on retained/resolved incidents as guidance; it does not imply
+a current blocker. Disclosure controls only expand text: there are no configuration,
+precheck execution, retry, cancellation or rollback actions and no operator sign-off
+is recorded. Deployment diagnostic evidence remains separately timestamped and scoped.

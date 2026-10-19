@@ -2365,3 +2365,12 @@ nav button:focus-visible {
 
 .watch-auto { display: flex; align-items: center; gap: 8px; font-size: 14px; line-height: 1.5; }
 .watch-auto input { width: 17px; height: 17px; accent-color: var(--primary); }
+
+.remediation-plan { margin: 22px 0; }
+.remediation-plan details { border-top: 1px solid var(--border); padding: 14px 0; }
+.remediation-plan summary { cursor: pointer; font-size: 16px; font-weight: 700; line-height: 1.5; }
+.remediation-plan summary:focus-visible { outline: 3px solid var(--primary-hover); outline-offset: 4px; }
+.remediation-plan p, .remediation-plan li { line-height: 1.65; }
+.remediation-plan li { margin: 9px 0; }
+.remediation-plan code { white-space: normal; overflow-wrap: anywhere; }
+.remediation-plan .remediation-reference { font-size: 14px; color: var(--muted-strong); }

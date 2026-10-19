@@ -5,7 +5,7 @@ import ts from "typescript";
 
 const source = readFileSync(new URL("../src/operational.ts", import.meta.url), "utf8");
 const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } }).outputText;
-const { monitoringPosture, hasCollectionPermission, ageSeconds, groupAuthenticationFailures, groupedFindingObservations, collectionStatus, inventoryHealthStatus } = await import(`data:text/javascript;base64,${Buffer.from(js).toString("base64")}`);
+const { incompleteRecoveries, monitoringPosture, hasCollectionPermission, ageSeconds, groupAuthenticationFailures, groupedFindingObservations, collectionStatus, inventoryHealthStatus } = await import(`data:text/javascript;base64,${Buffer.from(js).toString("base64")}`);
 const collector = (domain, code = 401, alias = "pc") => ({ source: "prism_central", endpoint_alias: alias, domain, status_code: code, status: code === 200 ? "HEALTHY" : "UNKNOWN" });
 
 test("authentication failures group by endpoint and code; raw results stay intact", () => {
@@ -95,4 +95,23 @@ test("no alerts and unknown severities remain explicit rather than proving healt
   assert.equal(monitoringPosture(data, undefined, now).label, "Review unclassified alerts");
   data.incidents[0].availability = "UNAVAILABLE";
   assert.equal(monitoringPosture(data, undefined, now).incidents.length, 0);
+});
+
+
+test("recovery actions select latest observation without changing resolved alert counts", () => {
+  const data = report();
+  const recovery = incident("prism-central", "CRITICAL", { id: "latest", source_key: "pc", cluster_id: "cluster", check_id: "200335", resolved: true, triage: { category: "Prism Central microservices infrastructure" }, deployment_diagnostics: { status: "BLOCKED", observed_at: data.generated_at } });
+  data.incidents = [{ ...recovery, id: "older", last_occurrence_at: "2026-10-17T09:00:00Z" }, recovery];
+  assert.equal(incompleteRecoveries(data, now).length, 1);
+  assert.equal(incompleteRecoveries(data, now)[0].incident.id, "latest");
+  assert.equal(incompleteRecoveries(data, now)[0].confirmed, true);
+  assert.equal(monitoringPosture(data, undefined, now).critical, 0);
+  for (const observed_at of ["invalid", "2020-01-01", "2999-01-01"]) {
+    data.incidents = [{ ...recovery, deployment_diagnostics: { status: "BLOCKED", observed_at } }];
+    assert.equal(incompleteRecoveries(data, now)[0].confirmed, false);
+  }
+  data.incidents = [recovery]; data.collectors[0].complete = false;
+  assert.equal(incompleteRecoveries(data, now)[0].confirmed, false);
+  data.incidents = [recovery, { ...recovery, last_occurrence_at: "2026-10-18T09:30:00Z", deployment_diagnostics: { status: "NO_CONFIRMED_BLOCKER" } }];
+  assert.equal(incompleteRecoveries(data, now).length, 0);
 });

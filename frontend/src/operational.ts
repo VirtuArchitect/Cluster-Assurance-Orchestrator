@@ -1,6 +1,20 @@
 import type { Collector, InventoryRun, HealthStatus, Observation } from "./main";
 import type { MonitoringReport } from "./monitoring";
 
+export function incompleteRecoveries(report: MonitoringReport | null, now = Date.now()) {
+  const latest = new Map<string, NonNullable<MonitoringReport>["incidents"][number]>();
+  for (const item of report?.incidents ?? []) {
+    if (item.source !== "prism-central" || item.triage?.category !== "Prism Central microservices infrastructure") continue;
+    const key = `${item.source_key}:${item.cluster_id}:${item.check_id}`;
+    const previous = latest.get(key);
+    if (!previous || (Date.parse(item.last_occurrence_at ?? item.occurred_at ?? "") || 0) > (Date.parse(previous.last_occurrence_at ?? previous.occurred_at ?? "") || 0)) latest.set(key, item);
+  }
+  return [...latest.values()].filter(item => item.deployment_diagnostics?.status === "BLOCKED").map(item => {
+    const age = ageSeconds(item.deployment_diagnostics?.observed_at, now);
+    return { incident: item, confirmed: item.availability === "CURRENT" && monitoringPosture(report, "prism-central", now).verified && age != null && age <= 120 };
+  });
+}
+
 export function monitoringPosture(report: MonitoringReport | null, source?: string, now = Date.now()) {
   const feeds = (report?.collectors ?? []).filter((feed) => !source || feed.source === source);
   const age = ageSeconds(report?.generated_at, now);

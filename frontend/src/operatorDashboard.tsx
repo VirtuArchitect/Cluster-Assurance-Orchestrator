@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import type { MonitoringReport } from "./monitoring";
 import type { InventoryRun } from "./main";
-import { monitoringPosture, ageSeconds } from "./operational";
+import { monitoringPosture, ageSeconds, incompleteRecoveries } from "./operational";
 
 const API = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8000";
 const sources = [{ id: "prism-element", name: "Prism Element", role: "PE · Cluster operations" }, { id: "prism-central", name: "Prism Central", role: "PC · Management plane" }];
@@ -13,6 +13,7 @@ export function OperatorDashboard(props: {
   onDiagnostics: () => void; onEstate: () => void; onInventory: () => void;
 }) {
   const posture = monitoringPosture(props.report);
+  const recoveries = incompleteRecoveries(props.report);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +51,11 @@ export function OperatorDashboard(props: {
         <small>{props.canCollect ? "Read-only alerts and events. Auto-refresh runs only while this dashboard is open." : "An operator with collection permission is required to refresh monitoring."}</small></div>
     </section>
     {error ? <div className="banner unknown" role="alert">{error} Saved evidence remains visible; freshness has not been reset.</div> : null}
+    {recoveries.length ? <section className="panel monitoring-warning" aria-label="Incomplete microservices recovery">
+      <h2>{recoveries.some(item => item.confirmed) ? "A200335 recovery incomplete" : "A200335 recovery needs fresh verification"}</h2>
+      <p>Prism alert resolution does not establish recovery. {recoveries.some(item => item.confirmed) ? "Fresh checks confirm a PE prerequisite blocker and failed deployment/precheck evidence." : "Saved blocker evidence is unconfirmed. Refresh PE & PC monitoring before acting."}</p>
+      <p>Review PE VIP/FQDN and Data Services IP, supported deployment recovery, and independent microservices/service validation. Open the recovery action below for evidence and the remediation plan.</p>
+    </section> : null}
     <section className="watch-source-grid" aria-label="PE and PC status">
       {sources.map((source) => {
         const state = monitoringPosture(props.report, source.id);
@@ -67,6 +73,13 @@ export function OperatorDashboard(props: {
     </section>
     <section className="panel watch-actions" aria-label="Immediate actions">
       <div className="watch-section-heading"><div><h2>Immediate actions</h2><p>{posture.verified ? "Critical first. Open an issue for source evidence, detailed checks and recovery criteria." : "1. Refresh monitoring. Then investigate the saved priorities below; their current state is unconfirmed."}</p></div><button className="secondary-button" onClick={() => props.onOpen()}>All incidents →</button></div>
+      {recoveries.map(({ incident, confirmed }) => <article className="monitoring-warning" key={`recovery-${incident.id}`}>
+        <h3>A200335 · {confirmed ? "Recovery incomplete" : "Recovery unconfirmed"}</h3>
+        <p>PC · {incident.resolved ? "Alert resolved in Prism" : "Alert open in Prism"} · separate recovery action; excluded from open-alert counts.</p>
+        <p>{confirmed ? incident.deployment_diagnostics?.blockers?.join("; ") : "Refresh monitoring: saved prerequisite/deployment evidence is no longer current."}</p>
+        <p><strong>Next:</strong> {confirmed ? incident.deployment_diagnostics?.next_actions[0] : "Collect fresh PE and PC evidence before planning recovery."}</p>
+        <button className="secondary-button" onClick={() => props.onOpen(incident.id)} aria-label="Review A200335 recovery">Review recovery evidence & actions →</button>
+      </article>)}
       {posture.incidents.length ? <ol className="watch-action-list">{posture.incidents.slice(0, 5).map((incident) => <li key={incident.id}>
         <div><span className={`status ${incident.severity.toLowerCase()}`}>{incident.severity}</span><span className="watch-source-label">{incident.source === "prism-central" ? "PC" : "PE"}{!posture.verified ? " · last collected" : ""}</span><h3>{incident.title}</h3><p>{incident.affected_entities.map((item) => item.name || item.id).join(" · ") || "Affected entity not reported"}</p><p><strong>First check:</strong> {incident.triage.steps[0]?.check ?? "Review the original Prism alert and verify workload impact."}</p></div>
         <button className="secondary-button" aria-label={`Investigate ${incident.title} from ${incident.source}`} onClick={() => props.onOpen(incident.id)}>Investigate →</button>

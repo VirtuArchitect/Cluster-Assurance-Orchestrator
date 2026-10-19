@@ -160,3 +160,8 @@ Source resolution remains separate from recovery: a fresh confirmed prerequisite
 shows recovery incomplete; absent, failed, stale or unblocked diagnostics never establish
 component health or operator recovery sign-off. Unavailable observations receive no
 retained diagnostic as current.
+
+The dashboard displays a separate A200335 recovery warning and immediate action for
+confirmed prerequisite blockers, including resolved source alerts. It links to the
+latest observation per source/cluster/check without inflating open-alert counts.
+Stale or incomplete evidence is labeled unconfirmed and requires refresh.

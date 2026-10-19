@@ -153,3 +153,10 @@ The plan is also visible on retained/resolved incidents as guidance; it does not
 a current blocker. Disclosure controls only expand text: there are no configuration,
 precheck execution, retry, cancellation or rollback actions and no operator sign-off
 is recorded. Deployment diagnostic evidence remains separately timestamped and scoped.
+
+A200335 recovery verification also collects fresh deployment and PE prerequisite evidence
+for resolved current PC observations, using one shared diagnostic per collection.
+Source resolution remains separate from recovery: a fresh confirmed prerequisite blocker
+shows recovery incomplete; absent, failed, stale or unblocked diagnostics never establish
+component health or operator recovery sign-off. Unavailable observations receive no
+retained diagnostic as current.

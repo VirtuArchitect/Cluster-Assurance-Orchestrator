@@ -111,3 +111,31 @@ The catalogue identifies a false-positive case for A200335; affected-version det
 and remediation require authenticated portal review. The console does not infer
 applicability, downgrade severity, suppress the alert or resolve it. Curated links
 are separate from KB IDs supplied by the source alert.
+
+## Observed A200335 deployment blockers
+
+For a current, unresolved PC microservices incident, monitoring additionally reads
+`POST /api/nutanix/v3/tasks/list` (read-list only, 100 records/page, maximum 20 pages)
+and `GET /PrismGateway/services/rest/v2.0/cluster/` on the configured PE. These are
+not deployment, precheck execution or configuration requests. Task totals and IDs
+must be consistent; malformed, capped, unauthorized or incomplete responses are UNKNOWN.
+Alert feed coverage and targeted diagnostic coverage are reported separately.
+
+The incident selects the newest deployment, links its precheck by parent UUID or
+identical creation timestamp, and checks that its error identifies the configured PE
+hostname before confirming a prerequisite blocker. A newer successful deployment,
+a different PE, missing fields or unrelated historical prechecks cannot establish a
+current blocker. The UI reports the parent task and child status separately, including
+RUNNING parent / FAILED precheck. Task correlation does not establish alert causality.
+
+Only explicit null/empty VIP and Data Services IP fields are reported as unset.
+The API does not independently establish FQDN configuration; that remains labelled
+unverified. Blockers, next actions, observation time, run ID and hashed raw task/PE
+responses are saved with the monitoring snapshot. A confirmed blocker becomes the
+first dashboard triage check. Old snapshots are not rewritten and resolved/unsupported
+observations do not automatically trigger these additional requests.
+
+Failed fresh diagnostics display UNKNOWN, never a retained blocker as current or a
+cleared prerequisite. No address allocation, DNS, task retry/cancellation, precheck
+execution, reboot, SSH or NCC execution occurs. Use an approved change and supported
+recovery process before retrying a blocked deployment.

@@ -165,3 +165,5 @@ The dashboard displays a separate A200335 recovery warning and immediate action 
 confirmed prerequisite blockers, including resolved source alerts. It links to the
 latest observation per source/cluster/check without inflating open-alert counts.
 Stale or incomplete evidence is labeled unconfirmed and requires refresh.
+
+A200335 incident comparisons match source, cluster, check and affected entity, selecting the nearest prior resolved alert before recurrence. Source resolution actor and automatic-resolution flag remain explicit; missing fields leave the method unverified. Previous source evidence is retained, while current deployment/prerequisite evidence is separately timestamped and does not prove point-in-time configuration or runtime causality.

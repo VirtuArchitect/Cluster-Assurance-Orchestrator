@@ -224,3 +224,27 @@ def test_microservices_runbook_does_not_capture_unrelated_alerts(source, title, 
     result = triage_for({"source": source, "title": title, "message": "Service health warning", "check_id": check_id})
     assert result["category"] != "Prism Central microservices infrastructure"
     assert result["curated_references"] == []
+
+
+@pytest.mark.parametrize("mismatch", [None, "source_key", "cluster_id", "check_id", "entity", "unresolved"])
+def test_recurrence_requires_same_source_check_entity_and_prior_resolution(monkeypatch, tmp_path, mismatch):
+    old = alert("old", message="Microservices Infrastructure is not in healthy state", check_id="pc::200335", resolved=True, auto_resolved=False, resolved_by_username="admin", resolved_time_stamp_in_usecs=1_700_000_060_000_000)
+    new = alert("new", message=old["message"], check_id=old["check_id"], created_time_stamp_in_usecs=1_700_000_120_000_000)
+    if mismatch in ("cluster_id", "check_id"):
+        new["cluster_uuid" if mismatch == "cluster_id" else "check_id"] = "other"
+    if mismatch == "entity": new["affected_entities"] = [{"uuid": "other"}]
+    if mismatch == "unresolved": old["resolved"] = False
+    def request(self, endpoint, method, path, body=None):
+        if "/alerts/" in path:
+            return response([old, new] if mismatch != "source_key" else ([old] if endpoint.alias == "prism-central" else [new]))
+        if "/events/" in path: return response([])
+        return HttpResponse(status_code=503, body=b'{}')
+    monkeypatch.setattr(NutanixReadOnlyAdapter, "_request", request)
+    r=collect_monitoring(settings(tmp_path))
+    item=next(i for i in r["incidents"] if i["source_id"] == "new")
+    if mismatch: assert "recurrence" not in item
+    else:
+        assert item["recurrence"]["source_id"] == "old"
+        assert item["recurrence"]["auto_resolved"] is False
+        assert item["recurrence"]["resolved_by_username"] == "admin"
+        assert item["recurrence"]["evidence"]["sha256"]

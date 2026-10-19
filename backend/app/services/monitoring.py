@@ -63,6 +63,19 @@ def collect_monitoring(settings: Settings) -> dict:
             incident["triage"] = triage_for(incident)
             incident["related_events"] = correlated_events(incident, events)
             incident.pop("deployment_diagnostics", None)
+            incident.pop("recurrence", None)
+            if incident["triage"]["category"] == "Prism Central microservices infrastructure" and incident.get("occurred_at"):
+                candidates = [old for old in incidents if old["id"] != incident["id"]
+                    and old["source_key"] == incident["source_key"] and old["check_id"] == incident["check_id"]
+                    and old["cluster_id"] == incident["cluster_id"]
+                    and {e["id"] for e in old["affected_entities"] if e["id"]} & {e["id"] for e in incident["affected_entities"] if e["id"]}
+                    and old["resolved"] and old.get("source_resolved_at")
+                    and old["source_resolved_at"] < incident["occurred_at"]]
+                if candidates:
+                    old = max(candidates, key=lambda item: item["source_resolved_at"])
+                    incident["recurrence"] = {key: old.get(key) for key in (
+                        "source_id", "occurred_at", "last_occurrence_at", "source_resolved_at",
+                        "auto_resolved", "resolved_by_username", "availability", "observed_at", "evidence")}
         # Source resolution does not establish deployment recovery. Share one fresh
         # endpoint-scoped diagnostic across current observations, including resolved ones.
         targets = [i for i in incidents if i["source"] == "prism-central"
@@ -184,6 +197,8 @@ def normalize_record(record: dict, source: str, source_key: str, kind: str, arti
         "source_id": identity, "source": source, "source_key": source_key, "kind": kind,
         "title": title[:300], "message": message, "severity": severity,
         "resolved": record.get("resolved"), "acknowledged": record.get("acknowledged") is True,
+        "auto_resolved": record.get("auto_resolved") if type(record.get("auto_resolved")) is bool else None,
+        "resolved_by_username": str(record.get("resolved_by_username") or "")[:200],
         "cluster_id": str(record.get("originating_cluster_uuid") or record.get("cluster_uuid") or ""),
         "check_id": str(record.get("check_id") or ""), "affected_entities": entities,
         "occurred_at": source_time(record.get("created_time_stamp_in_usecs")),

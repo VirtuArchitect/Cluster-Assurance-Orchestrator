@@ -6,6 +6,7 @@ type Evidence = { method: string; path: string; http_status: number | null; arti
 type Entity = { id: string; name: string; type: string };
 type PrismEvent = { id: string; source_id: string; source: string; title: string; message: string; severity: string; occurred_at: string | null; affected_entities: Entity[]; evidence: Evidence };
 type Incident = PrismEvent & {
+  recurrence?: { source_id: string; occurred_at: string | null; last_occurrence_at: string | null; source_resolved_at: string; auto_resolved: boolean | null; resolved_by_username: string; availability: string; observed_at: string; evidence: Evidence };
   deployment_diagnostics?: { status: string; observed_at: string; run_id: string; conclusion: string; error?: string;
     blockers?: string[]; next_actions: string[]; task_records_collected?: number; task_correlation?: string;
     tasks: Array<{ uuid: string; operation_type: string; status: string; creation_time: string; last_update_time: string; progress_message?: string; error_detail?: string }>;
@@ -159,6 +160,20 @@ function IncidentDetail({ incident: i, onBack }: { incident: Incident; onBack: (
       <p>Remaining actions: validate required PE network settings, obtain a successful supported deployment/precheck, verify microservices and affected services, then monitor for recurrence. This view records no operator recovery sign-off.</p>
     </section> : null}
     <h3>What happened</h3><p className="incident-message">{i.message}</p>
+    {i.recurrence ? <section className="panel" aria-label="A200335 recurrence comparison">
+      <h3>A200335 recurrence · previous resolution did not verify recovery</h3>
+      <p>Same source, cluster, check and affected entity; different Prism alert records. This comparison does not prove the runtime trigger.</p>
+      <dl className="details-grid">
+        <div><dt>Previous alert</dt><dd>{i.recurrence.source_id}</dd></div>
+        <div><dt>Previous first / last occurrence</dt><dd>{date(i.recurrence.occurred_at)} / {date(i.recurrence.last_occurrence_at)}</dd></div>
+        <div><dt>Previous resolution</dt><dd>{date(i.recurrence.source_resolved_at)} · {i.recurrence.auto_resolved === false && i.recurrence.resolved_by_username ? `Manually resolved by ${i.recurrence.resolved_by_username}` : i.recurrence.auto_resolved === true ? "Automatically resolved" : "Resolution method unverified"}</dd></div>
+        <div><dt>New alert / first occurrence</dt><dd>{i.source_id} · {date(i.occurred_at)}</dd></div>
+        <div><dt>Previous observation evidence</dt><dd>{i.recurrence.availability} · observed {date(i.recurrence.observed_at)}</dd></div>
+      </dl>
+      <p>The latest deployment/precheck evidence below must be reviewed separately. A failed task predating resolution and unchanged current prerequisites support an unresolved deployment problem; they do not establish PE configuration at the exact resolution time or independently prove microservices runtime health.</p>
+      <p><strong>Remaining actions:</strong> validate the PE prerequisites, follow supported deployment recovery, independently verify components and affected PC functions, and monitor for recurrence. Resolving the alert manually is not remediation.</p>
+      <details><summary>Previous alert source evidence</summary><EvidenceDetail evidence={i.recurrence.evidence} /></details>
+    </section> : null}
     {i.unresolved_parameters?.length ? <p>Source parameters not supplied: {i.unresolved_parameters.join(", ")}. Inspect the original Prism record before interpreting these values.</p> : null}
     {i.availability !== "CURRENT" ? <p className="monitoring-warning">Last-known observation; current source state is unverified. Absence or collection failure is not resolution.</p> : null}
     <dl className="details-grid"><div><dt>Original alert ID</dt><dd>{i.source_id}</dd></div><div><dt>Check ID</dt><dd>{i.check_id || "Not supplied"}</dd></div><div><dt>Cluster ID</dt><dd>{i.cluster_id || "Not supplied"}</dd></div>

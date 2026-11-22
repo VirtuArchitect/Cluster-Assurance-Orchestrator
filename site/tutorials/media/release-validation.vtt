@@ -1,0 +1,17 @@
+WEBVTT
+
+00:00:00.000 --> 00:00:10.000
+1. Release identity and immutability
+Synthetic training. The canonical version is backend/app/release.json.
+
+00:00:10.000 --> 00:00:20.000
+2. Pre-test validation
+Synthetic training. Run backend tests, frontend tests and production builds.
+
+00:00:20.000 --> 00:00:30.000
+3. Controlled cutover and rollback
+Synthetic training. Agree stop conditions: mismatched provenance, missing evidence, failed permissions/TLS checks, data migration uncertainty or unexpected target writes.
+
+00:00:30.000 --> 00:00:40.000
+4. Acceptance record
+Synthetic training. Record version, revision, source state, image digest, package checksum, environment class, target software versions, test cases, timestamps, results, defects and residual limitations.

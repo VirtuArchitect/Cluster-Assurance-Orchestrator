@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from uuid import uuid4
 
+from app.version import build_identity
 from app.adapters.nutanix import NutanixReadOnlyAdapter
 from app.core.config import Settings
 from app.domain.inventory import InventoryRunReport
@@ -19,10 +20,10 @@ def run_inventory(settings: Settings) -> InventoryRunReport:
 def write_inventory_evidence(report: InventoryRunReport, evidence_dir: str | Path) -> Path:
     target_dir = Path(evidence_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
     target = target_dir / f"inventory-run-{timestamp}.json"
     target.write_text(
-        json.dumps(report.api_dict(), indent=2, sort_keys=True),
+        json.dumps({**report.api_dict(), "build": build_identity()}, indent=2, sort_keys=True),
         encoding="utf-8",
     )
     return target

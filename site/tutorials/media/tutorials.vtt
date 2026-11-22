@@ -1,0 +1,17 @@
+WEBVTT
+
+00:00:00.000 --> 00:00:10.000
+1. Orientation and status interpretation
+Synthetic training. Open the public demo from the project site.
+
+00:00:10.000 --> 00:00:20.000
+2. Collection failure and incident investigation
+Synthetic training. Exercise 3: consider a synthetic HTTP 401 on pc.example.invalid.
+
+00:00:20.000 --> 00:00:30.000
+3. Recovery follow-up and recurrence
+Synthetic training. Exercise 5: the synthetic source alert is manually resolved while deployment remains blocked.
+
+00:00:30.000 --> 00:00:40.000
+4. Evidence handover
+Synthetic training. Exercise 6: prepare an anonymised handover with version/revision, evidence age, source/feed completeness, original check type, synthetic affected entity, observations and next action..

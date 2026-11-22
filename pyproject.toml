@@ -1,6 +1,6 @@
 [project]
 name = "cluster-assurance-orchestrator"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Independent operational health assurance for Nutanix environments"
 requires-python = ">=3.11"
 dependencies = [
@@ -34,3 +34,9 @@ pythonpath = ["backend"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.setuptools.dynamic]
+version = {attr = "app.version.__version__"}
+
+[tool.setuptools.package-data]
+app = ["release.json", "build-info.json"]

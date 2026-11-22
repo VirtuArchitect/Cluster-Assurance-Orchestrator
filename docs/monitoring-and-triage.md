@@ -13,7 +13,7 @@ Critical alerts precede warnings; each action opens its exact incident. Source c
 open the queue filtered to PE or PC. Counts remain source observations, not deduplicated
 faults. Inventory success and administration/readiness are shown separately.
 
-Use **Refresh PE & PC monitoring** to collect alerts and events directly from the
+The separate Compose monitoring worker collects alerts/events without a browser. Use **Refresh PE & PC monitoring** for an explicit additional read-only collection from the
 dashboard. Current alert posture requires evidence no older than two minutes and
 complete alerts and events feeds for the relevant source. Missing, incomplete or stale
 evidence displays **Current status unknown**, with saved priorities retained. Even
@@ -34,9 +34,7 @@ Dashboard auto-refresh is optional, every 60 seconds, and stops when the dashboa
 5. Related events share an affected entity and fall within one hour of the source alert
    occurrence. This is contextual correlation, not proof of causation.
 
-Optional automatic collection runs every 60 seconds **only while the selected dashboard or incident view is open**.
-With automatic collection off, the view refreshes saved evidence every 30 seconds;
-this does not contact Prism. Ages advance every 15 seconds and monitoring snapshots
+Unattended collection runs in `monitoring-worker` every 60 seconds (inventory every 900 seconds). Browser views refresh saved monitoring evidence every 30 seconds and do not schedule extra Prism calls. Worker heartbeats, inventory/feed errors and the durable delivery queue appear in the console. See [unattended monitoring and delivery](unattended-monitoring.md) for configuration, retries, external watchdog requirements and acceptance limitations.
 older than two minutes are labelled stale. These are application defaults, not
 universal Nutanix polling requirements. There is no unattended monitoring worker.
 
@@ -184,3 +182,35 @@ Collection diagnostics and events use disclosures so the incident queue and sele
 incident are easier to reach. Failed source diagnostics open automatically. Mobile
 navigation is collapsed by default and exposes its expanded state to assistive
 technology. No monitoring permission, TLS setting or infrastructure action is changed.
+
+
+## Shared theme and source posture visual
+
+Every console page uses shared typography, panel/table treatments, form controls,
+status badges and keyboard focus states in light and dark modes. Unknown status is
+grey, distinct from an actionable warning. Authentication uses the same visual tokens.
+
+The dashboard donut counts exactly two monitoring sources (PE and PC), not alert
+records, physical clusters or workloads. Red indicates a source with critical alerts;
+amber indicates warnings; green means no critical/warning alerts in fresh complete
+source evidence; grey means unknown, stale, incomplete or unclassified evidence.
+The complete legend gives exact counts, including zero categories. Green does not
+establish infrastructure health, service recovery or absence of informational alerts.
+Recovery follow-ups remain separately visible in the action queue. SVG segments are
+hidden from assistive technology in favor of the textual caption, legend and counts.
+
+
+## Operator interpretation and neutral dark mode
+
+Non-dashboard pages include an interpretation guide: scope, evidence limitations,
+collection age where applicable and the next operator step. Inventory collection,
+connection tests, schedule previews, recorded executions, source alerts and recovery
+validation are explicitly different claims. Generic successful check badges read
+PASS, not HEALTHY. Missing/invalid collection age cannot establish verified evidence;
+a partial set of passed connection tests does not make the whole set pass. Unchanged
+record counts do not establish an unchanged configuration or healthy services.
+
+Dark mode uses Windows-style neutral layers (#202020 page/navigation, #272727 panels,
+#2d2d2d elevated controls, #1c1c1c inset surfaces), readable neutral text and blue accent.
+This is an application palette, not synchronization with Windows accent settings or
+Mica/acrylic effects. Status colours retain their documented scope and meaning.

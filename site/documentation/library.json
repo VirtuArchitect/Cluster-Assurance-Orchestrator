@@ -1,0 +1,290 @@
+{
+  "version": "0.2.0-rc.1",
+  "classification": "synthetic-public-documentation",
+  "guides": [
+    {
+      "id": "quick-start",
+      "title": "Controlled Production-Test Quick Start",
+      "audience": "Test lead and platform administrator",
+      "summary": "Prepare an isolated, traceable evaluation and establish its safety boundary.",
+      "source": [
+        "docs/appliance.md",
+        "backend/app/api/routes.py",
+        "backend/app/core/config.py"
+      ],
+      "sections": [
+        {
+          "title": "1. Establish the test boundary",
+          "steps": [
+            "Nominate a test lead, incident owner and rollback approver. Agree the PE/PC versions, maintenance window, data classification and acceptance criteria before connecting real systems.",
+            "This candidate is not production approved. Start in a controlled environment with read-only Prism permissions, strict TLS, SSH disabled and NCC execution disabled. Do not broaden privileges to make a failing test pass.",
+            "Use an immutable image or appliance artifact from a reviewed clean commit. Record version, full revision, build time, image digest and archive SHA-256. A matching version label alone is insufficient."
+          ]
+        },
+        {
+          "title": "2. Prepare the appliance",
+          "steps": [
+            "Follow the appliance runbook and configure unique secrets through the deployment environment, never in chat or documentation. Replace every supplied development default before testing. Keep the authentication secret and database credentials in approved secret storage.",
+            "Protect the console with an approved HTTPS reverse proxy and network restrictions before remote use. The default container port is HTTP; it does not provide a production ingress or certificate lifecycle.",
+            "Back up database and evidence volumes plus the deployment configuration. Verify a restore in a separate environment. A successful backup creation is not proof that restore works."
+          ]
+        },
+        {
+          "title": "3. Connect and collect",
+          "steps": [
+            "Open Settings > Connections. Configure separate Prism Element and Prism Central endpoints using pe.example.invalid and pc.example.invalid as documentation examples only. Validate trusted certificates and least-privilege credentials.",
+            "Run the connection test, then collect inventory from Health Runs. Separately collect Prism alerts and events from the dashboard or Prism Incidents. A passed connection test is not a collection result.",
+            "Inspect all configured sources and feed completeness. Confirm timestamp and TLS mode. A missing, stale, failed or incomplete source remains unknown; preserve its last-known evidence."
+          ]
+        },
+        {
+          "title": "4. Record the acceptance result",
+          "steps": [
+            "Check Settings > About. UI and API versions/revisions must match, source must be clean, revision must be known and artifact checksums must match the approved package. Record a mismatch as a test failure.",
+            "Confirm /api/v1/health reports the expected build and effective read-only mode with NCC and SSH disabled. Its status=ok concerns the app response, not the Nutanix estate.",
+            "Record functional results, permissions exercised, observed limitations and rollback evidence in the test record. Only the accountable approver may accept the candidate for the agreed scope."
+          ]
+        }
+      ],
+      "pdf": "files/CAO-quick-start-0.2.0-rc.1.pdf",
+      "sha256": "f49a6d14a774e5f4047c53118295112de137221e36c2332263e663ea9fe9a1b6"
+    },
+    {
+      "id": "operator-guide",
+      "title": "Operations Console User Guide",
+      "audience": "Monitoring operators and incident coordinators",
+      "summary": "Understand status, freshness and the immediate-action workflow without false health claims.",
+      "source": [
+        "frontend/src/operatorDashboard.tsx",
+        "frontend/src/operational.ts",
+        "frontend/src/pageGuidance.tsx"
+      ],
+      "sections": [
+        {
+          "title": "1. Start with source confidence",
+          "steps": [
+            "Dashboard separates PE cluster operations from the PC management plane. Read source age, feed coverage and connection trust before interpreting totals. PE and PC observations can describe the same fault and are not deduplicated incident counts.",
+            "Monitoring posture requires complete feeds and evidence within the current freshness window (two minutes). Saved evidence remains visible when unconfirmed. Inventory evidence has its own timestamp and is not refreshed by collecting alerts.",
+            "The traffic-light donut counts sources, not incidents. Red means a source reported critical alerts; amber means warning alerts; green means no critical/warning alerts in fresh complete evidence; grey means unknown or stale. Green does not prove recovery."
+          ]
+        },
+        {
+          "title": "2. Work the immediate-action queue",
+          "steps": [
+            "Review critical priorities first, then warnings and recovery follow-ups. Filter by source, action type or affected entity and open the exact incident. Establish user/service impact independently.",
+            "Recovery follow-ups remain actionable after Prism resolution. A recovery entry is not an additional source alert. An unavailable diagnostics feed means recovery is unverified rather than confirmed blocked or complete.",
+            "Read Operator Triage for evidence gaps and next steps. Collection-count changes do not establish configuration or service-state changes. Escalate conflicting observations with timestamps and source identity."
+          ]
+        },
+        {
+          "title": "3. Interpret the other pages",
+          "steps": [
+            "Cluster Estate preserves last-known entries when inventory collection fails. CURRENT means an entry belongs to the saved collection, not continuous availability; check evidence age. Do not interpret inventory presence as cluster health.",
+            "Health Runs and Collection Diagnostics describe read-only API requests and saved results. COLLECTED is a response outcome. Authentication failures group by endpoint; investigate access once and review the individual checks.",
+            "Schedules distinguish preview from recorded execution. Evidence separates hashes, retention and TLS trust from production acceptance. Settings shows saved test and account configuration, not continuous access validation."
+          ]
+        },
+        {
+          "title": "4. Close and hand over",
+          "steps": [
+            "Record the symptom, source alert/check IDs, affected service, source and observed times, freshness, collection errors and evidence hashes. Separate observations, likely contributors and verified causes.",
+            "Close only when the source status, deployment/prerequisite checks and independent service validation meet the incident recovery criteria. A manually resolved alert is not sufficient.",
+            "Hand over remaining actions, owners, next review time and escalation condition. Share only approved sanitised extracts; raw evidence may contain private names, addresses and identifiers."
+          ]
+        }
+      ],
+      "pdf": "files/CAO-operator-guide-0.2.0-rc.1.pdf",
+      "sha256": "cd3ff506bbb73aa5a44b7063c4bd227cc390e93230a0358ee4c77995db1ad11b"
+    },
+    {
+      "id": "incident-triage",
+      "title": "Prism Incident and Recovery Runbook",
+      "audience": "Platform support and incident responders",
+      "summary": "Investigate A200335 recurrence and CVM filesystem pressure using evidence-specific checks.",
+      "source": [
+        "backend/app/services/monitoring.py",
+        "backend/app/services/pc_diagnostics.py",
+        "frontend/src/monitoring.tsx"
+      ],
+      "sections": [
+        {
+          "title": "1. Establish what happened",
+          "steps": [
+            "Open Prism Incidents and collect fresh alerts and events. Verify all four configured PE/PC alert/event feeds, pagination completeness and TLS trust. Failed collection means current state is unknown.",
+            "Inspect the original alert ID, check ID, lifecycle, acknowledgement, affected entities and timestamps. Correlated events are context, not causation. Distinguish source occurrence from app observation time.",
+            "Record source-reported possible causes separately from curated recommended triage and independently verified findings. Consult installed-release documentation and Nutanix Support before corrective infrastructure actions."
+          ]
+        },
+        {
+          "title": "2. A200335: inspect deployment and prerequisites",
+          "steps": [
+            "For Microservices Infrastructure is not in healthy state, inspect the latest PC Microservice Infrastructure Deployment task and CMSP Prechecks child result. A RUNNING parent with a FAILED precheck is not successful deployment.",
+            "Read the matched PE cluster VIP and Data Services IP evidence. An empty VIP field plus a matching task error supports a prerequisite blocker; this API does not verify FQDN configuration or DNS. The app correlation is not proof of alert-to-task causality.",
+            "If task API access, fields or the matched PE are unavailable, retain UNKNOWN and restore read-only visibility. No matching task or no confirmed blocker does not prove runtime microservices health."
+          ]
+        },
+        {
+          "title": "3. Plan correction and verify recurrence",
+          "steps": [
+            "Before any approved change, validate address ownership, subnet/routing, DNS, uniqueness, installed-release requirements, maintenance scope and rollback owner. Capture current configuration. Never allocate an address from this example.",
+            "Use supported vendor procedures under a separate change record. This app does not assign VIPs, change DNS, restart services, retry deployment, or run SSH/Kubernetes commands. If a deployment is stuck, engage Nutanix Support rather than repeatedly redeploying.",
+            "After correction, validate prechecks, parent deployment state, microservices/component health and affected PC functions. Recollect alerts and diagnostics. Compare recurrence to the earlier manually resolved alert; do not treat that resolution as recovery evidence."
+          ]
+        },
+        {
+          "title": "4. CVM /home: inspect the correct filesystem",
+          "steps": [
+            "Identify the affected CVM and exact mount from the source alert. Under an approved read-only diagnostic procedure inspect df -h /home and df -i /home, mount identity and growth over time. Bytes and inodes are different failure modes.",
+            "Scope directory-usage inspection to the affected filesystem. Review support bundles, uploads, logs and recent upgrade activity. Recursive scans can add load. Do not treat storage data or unfamiliar files as disposable.",
+            "No delete, truncate or service restart is authorised by this guide. Obtain supported cleanup guidance and a separate change approval. Recheck byte/inode headroom, relevant check, source alert and service impact; escalate recurrence with time-scoped evidence."
+          ]
+        }
+      ],
+      "pdf": "files/CAO-incident-triage-0.2.0-rc.1.pdf",
+      "sha256": "a62137e1c028ba7f5d1cc25ff645db18539324a16d8fa8f3fccbfd0f6cac0447"
+    },
+    {
+      "id": "administrator-guide",
+      "title": "Administrator and Data Protection Guide",
+      "audience": "Appliance administrators and security reviewers",
+      "summary": "Configure access, persistence, backups and evidence sharing with explicit limitations.",
+      "source": [
+        "backend/app/services/admin_store.py",
+        "backend/app/services/storage_ops.py",
+        "backend/app/api/routes.py",
+        "docs/appliance.md"
+      ],
+      "sections": [
+        {
+          "title": "1. Access and secrets",
+          "steps": [
+            "Use unique local accounts and the least-privilege role that supports the test. Viewers inspect saved evidence; operators need the relevant read-only collection permission. Administrative controls remain separately restricted.",
+            "Validate effective permissions with positive and negative tests using designated test accounts. A configured role matrix is not access-control certification. Review session expiry and sign-out behavior as part of acceptance.",
+            "Keep credential changes in approved secret handling. Do not paste passwords into tickets or public examples. Preserve the authentication secret with protected backups where required for restoration; losing key material can prevent saved secret recovery."
+          ]
+        },
+        {
+          "title": "2. Persistence and backups",
+          "steps": [
+            "Docker/appliance deployments use PostgreSQL for administration and named volumes for persistent evidence. SQLite fallback is for local development; confirm the active backend before relying on persistence.",
+            "Use Settings > Storage for admin-only database backup creation/download. Protect exports as sensitive. Capture the application version, database version, backup time and checksums with the test record.",
+            "A database export does not include every evidence file, deployment setting or external secret. Back up the documented volumes and configuration separately. Do not publish raw backups or runtime evidence."
+          ]
+        },
+        {
+          "title": "3. Retention and restoration",
+          "steps": [
+            "Review configured audit, execution and evidence retention plus minimum retained runs. Retention settings are policy inputs, not proof of backup coverage or regulatory compliance.",
+            "Exercise restoration in a separate environment before any cutover. Verify sign-in, roles, connections, evidence integrity and historical incidents without contacting production targets unintentionally.",
+            "Keep the old image and pre-change data/configuration snapshots. A simple image rollback may be unsafe after schema/data changes. Restore a compatible snapshot under a reviewed procedure rather than overwriting current volumes."
+          ]
+        },
+        {
+          "title": "4. Evidence sharing and escalation",
+          "steps": [
+            "Operational outputs may expose hostnames, addresses, UUIDs, user names, task text and topology even when passwords are hidden. Review the full export including metadata, filenames, links and embedded images.",
+            "Use synthetic documentation data or replace identifying values consistently with reserved example names and documentation IP addresses. Do not use blurring as the sole protection for sensitive screenshots.",
+            "Keep internal incident evidence under approved access controls. For vendor escalation, share the minimum required through an approved secure channel; retain an internal mapping only where policy permits."
+          ]
+        }
+      ],
+      "pdf": "files/CAO-administrator-guide-0.2.0-rc.1.pdf",
+      "sha256": "7283fab1a8e07f93aa953c01dae01c7bbb06823bb741d9d83c0543591d4765a4"
+    },
+    {
+      "id": "release-validation",
+      "title": "Release, Validation and Rollback Checklist",
+      "audience": "Release owner and production-test approver",
+      "summary": "Distinguish source, package, installed runtime and acceptance evidence.",
+      "source": [
+        "backend/app/release.json",
+        "backend/app/version.py",
+        "scripts/build-appliance.ps1",
+        "Dockerfile"
+      ],
+      "sections": [
+        {
+          "title": "1. Release identity and immutability",
+          "steps": [
+            "The canonical version is backend/app/release.json. Candidate versions use Semantic Versioning such as 0.2.0-rc.1; Python metadata uses the equivalent 0.2.0rc1. Frontend package metadata must match the canonical semantic version.",
+            "Every candidate needs a new version when its contents change. Build release packages from a reviewed clean checkout and preserve full revision, UTC build time, source state, image identity and SHA-256. Never relabel or overwrite an accepted artifact.",
+            "A dirty or unknown source build is local verification only. A prerelease label, successful CI or a reachable UI does not constitute production approval. Record acceptance scope and accountable approver separately."
+          ]
+        },
+        {
+          "title": "2. Pre-test validation",
+          "steps": [
+            "Run backend tests, frontend tests and production builds. Build the actual container and verify its /api/v1/health build identity against Settings > About. Record any skipped tests and unavailable dependencies.",
+            "Verify least-privilege access and rejection paths, strict TLS, complete PE/PC collection, stale/failed source behavior, retained history and A200335 recovery/recurrence semantics. Do not validate only the happy path.",
+            "Test console layout and accessibility with both themes, keyboard access and narrow screens. Verify documentation links and anonymisation scans. Public tutorial scenarios are synthetic, not hardware acceptance evidence."
+          ]
+        },
+        {
+          "title": "3. Controlled cutover and rollback",
+          "steps": [
+            "Agree stop conditions: mismatched provenance, missing evidence, failed permissions/TLS checks, data migration uncertainty or unexpected target writes. Preserve old image and protected configuration plus verified backups.",
+            "Install the exact reviewed image with an explicit version/digest pin. Verify effective Compose configuration and running image identity; loading an image archive alone does not replace the running service.",
+            "Rollback only under the reviewed plan. Stop the affected candidate if needed, restore compatible configuration/data snapshots and start the known-good image. Validate app access and read-only mode before any recollection."
+          ]
+        },
+        {
+          "title": "4. Acceptance record",
+          "steps": [
+            "Record version, revision, source state, image digest, package checksum, environment class, target software versions, test cases, timestamps, results, defects and residual limitations. Keep target-identifying records private.",
+            "Require an explicit decision: accepted for the defined test scope, rejected, or conditionally accepted with owners and expiry. No automatic production promotion is provided.",
+            "Release notes must distinguish implemented features, local/CI verification, lab verification and unverified production assumptions. Publish only anonymised summaries; retain detailed evidence internally."
+          ]
+        }
+      ],
+      "pdf": "files/CAO-release-validation-0.2.0-rc.1.pdf",
+      "sha256": "1211a39de519587e736b0300678008cf3cd4ef2003bb7cd65452dd75f43fdd82"
+    },
+    {
+      "id": "tutorials",
+      "title": "Tutorial Workbook: Six Guided Exercises",
+      "audience": "New operators and test facilitators",
+      "summary": "Practice the console workflow using explicitly synthetic scenarios.",
+      "source": [
+        "frontend/src/main.tsx",
+        "frontend/src/operatorDashboard.tsx",
+        "frontend/src/monitoring.tsx"
+      ],
+      "sections": [
+        {
+          "title": "1. Orientation and status interpretation",
+          "steps": [
+            "Open the public demo from the project site. It is static and cannot contact Prism or persist real appliance settings. All examples in this workbook are fictional; example.invalid hosts and 192.0.2.0/24 addresses are documentation-only.",
+            "Exercise 1: compare PE and PC source cards, totals and evidence confidence. Explain why a green source segment cannot certify cluster health. Expected result: the operator can distinguish source count from alert count.",
+            "Exercise 2: inspect stale evidence in Operator Triage and Health Runs. Expected result: the operator requests a fresh collection rather than declaring the estate healthy from saved COLLECTED responses."
+          ]
+        },
+        {
+          "title": "2. Collection failure and incident investigation",
+          "steps": [
+            "Exercise 3: consider a synthetic HTTP 401 on pc.example.invalid. Find the collection diagnostics interpretation guide and identify grouped authentication failures. Expected next step: validate the account through approved administration, then recollect; do not report a cluster outage solely from 401.",
+            "Exercise 4: follow a fictional A200335 incident. Compare a failed CMSP precheck to unset matched PE prerequisites. Expected result: describe a likely contributor and remaining unknowns without claiming runtime root cause.",
+            "Explain why restoring task-list API access alone does not establish deployment recovery. List independent service checks and affected PC functions that the responsible administrator must validate."
+          ]
+        },
+        {
+          "title": "3. Recovery follow-up and recurrence",
+          "steps": [
+            "Exercise 5: the synthetic source alert is manually resolved while deployment remains blocked. Expected result: retain the recovery follow-up and list prerequisites, supported correction planning and post-change validation.",
+            "A new source occurrence appears later. Compare lifecycle history, resolution actor/type and deployment evidence. Expected result: identify recurrence without counting the old resolved record as a current open alert.",
+            "Do not click infrastructure change controls in vendor products during this tutorial. The app collects evidence and recommends triage; corrective action follows a separate authorised change process."
+          ]
+        },
+        {
+          "title": "4. Evidence handover",
+          "steps": [
+            "Exercise 6: prepare an anonymised handover with version/revision, evidence age, source/feed completeness, original check type, synthetic affected entity, observations and next action.",
+            "Review Evidence and Settings > About. State why a recorded hash is not a restore test and why a dirty build cannot be accepted as an immutable release. Expected result: a test lead can reproduce which build was assessed.",
+            "Before sharing, remove names, credentials, private addresses, real UUIDs, account names and internal paths from the entire deliverable. Use the workbook as the safe source; do not export lab records into the public site."
+          ]
+        }
+      ],
+      "pdf": "files/CAO-tutorials-0.2.0-rc.1.pdf",
+      "sha256": "e42af7564912060eb9361c9d292cef108759cde426451facaef8e3b2f95a1976"
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ageSeconds } from "./operational";
+import { ageSeconds, monitoringPosture, formatEvidenceAge } from "./operational";
 import { A200335RemediationPlan } from "./a200335RemediationPlan";
 
 type Evidence = { method: string; path: string; http_status: number | null; artifact?: string; sha256?: string; elapsed_ms?: number; size_bytes?: number };
@@ -32,16 +32,17 @@ export type MonitoringReport = {
 const API = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8000";
 const emptyReport: MonitoringReport = { available: false, generated_at: null, collectors: [], incidents: [], events: [] };
 const date = (value?: string | null) => value ? new Date(value).toLocaleString() : "Not reported";
-const age = (value?: string | null) => { const seconds = ageSeconds(value); return seconds == null ? "Unknown age" : seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m`; };
+const age = (value?: string | null) => formatEvidenceAge(ageSeconds(value)).replace(/ ago$/, "");
 const tone = (value: string) => value === "CRITICAL" ? "critical" : value === "WARNING" ? "warning" : value === "COLLECTED" ? "healthy" : "unknown";
 const Badge = ({ value }: { value: string }) => <span className={`status ${tone(value)}`}>{value.replaceAll("_", " ")}</span>;
 
 export function MonitoringSummary({ report, onOpen }: { report: MonitoringReport | null; onOpen: () => void }) {
+  const verified = monitoringPosture(report).verified;
   const stale = report?.generated_at ? (ageSeconds(report.generated_at) ?? Infinity) > 120 : true;
   return <section className="panel monitoring-summary" aria-label="Prism alert posture">
     <div><h2>Prism alert posture</h2>
       <p>{!report?.available ? "Alerts and events have not been collected. Infrastructure health remains unknown." :
-        `${report.summary?.critical ?? 0} critical · ${report.summary?.warning ?? 0} warning · ${report.summary?.open ?? 0} open source observations · ${report.summary?.unavailable ?? 0} last-known incidents`}</p>
+        `${verified ? "Current collection" : "Saved / unconfirmed"}: ${report.summary?.critical ?? 0} critical · ${report.summary?.warning ?? 0} warning · ${report.summary?.open ?? 0} open source observations · ${report.summary?.unavailable ?? 0} last-known incidents`}</p>
       <small>{report?.available ? `Monitoring evidence ${age(report.generated_at)} old · ${stale ? "STALE" : "recent"} · ${report.status ?? "UNKNOWN"} · ${report.tls_mode === "strict" ? "strict TLS" : "TLS unverified"}. Alert posture is not a complete health evaluation.` : "Read-only collection is available to operators."}</small>
     </div><button className="primary-button" onClick={onOpen}>Open Prism incidents</button>
   </section>;
@@ -54,7 +55,6 @@ export function MonitoringPage(props: { authToken: string; initial: MonitoringRe
   const [state, setState] = useState("open");
   const [severity, setSeverity] = useState("all");
   const [source, setSource] = useState(props.initialTarget?.source ?? "all");
-  const [auto, setAuto] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const busyRef = useRef(false);
@@ -81,9 +81,9 @@ export function MonitoringPage(props: { authToken: string; initial: MonitoringRe
   }
   useEffect(() => {
     void update();
-    const timer = window.setInterval(() => { void update(auto && props.canCollect); }, auto ? 60_000 : 30_000);
+    const timer = window.setInterval(() => { void update(); }, 30_000);
     return () => window.clearInterval(timer);
-  }, [props.authToken, auto, props.canCollect]);
+  }, [props.authToken, props.canCollect]);
   const incident = report.incidents.find((item) => item.id === selected);
   const sources = Array.from(new Set(report.collectors.map((item) => item.source)));
   const filtered = report.incidents.filter((item) =>
@@ -98,14 +98,14 @@ export function MonitoringPage(props: { authToken: string; initial: MonitoringRe
       <div className="toolbar monitoring-toolbar">
         <button className="primary-button" disabled={busy || !props.canCollect} onClick={() => void update(true)}>{busy ? "Collecting / loading…" : "Collect alerts and events"}</button>
         <button className="secondary-button" disabled={busy} onClick={() => void update()}>Refresh saved evidence</button>
-        {props.canCollect ? <label><input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} /> Auto-collect every 60 seconds while this view is open</label> : <span>Viewer access: saved evidence only</span>}
+        <span>Saved evidence refreshes every 30 seconds. Unattended collection runs in the worker.</span>
       </div>
       {error ? <p role="alert" className="monitoring-warning">{error} Prior evidence is retained; this is not a clear-health result.</p> : null}
       {report.available ? <p>Last collected {date(report.generated_at)} ({age(report.generated_at)} ago) · <Badge value={report.status ?? "UNKNOWN"} /> · Run <code>{report.run_id}</code> · {report.tls_mode === "strict" ? "Strict TLS" : "TLS verification bypassed: lab evidence only"}</p> : <p>No monitoring evidence yet. Collect alerts and events to establish source coverage.</p>}
       {report.available && (ageSeconds(report.generated_at) ?? Infinity) > 120 ? <p role="status" className="monitoring-warning">Monitoring evidence is stale. No current clear-health claim can be made.</p> : null}
       <div className="monitoring-counters">
-        <span>Critical open: <strong>{report.summary?.critical ?? "Unknown"}</strong></span><span>Warning open: <strong>{report.summary?.warning ?? "Unknown"}</strong></span>
-        <span>Open source observations: <strong>{report.summary?.open ?? "Unknown"}</strong></span><span>Last-known incidents: <strong>{report.summary?.unavailable ?? "Unknown"}</strong></span>
+        <span>{monitoringPosture(report).verified ? "Critical open" : "Saved critical"}: <strong>{report.summary?.critical ?? "Unknown"}</strong></span><span>{monitoringPosture(report).verified ? "Warning open" : "Saved warning"}: <strong>{report.summary?.warning ?? "Unknown"}</strong></span>
+        <span>{monitoringPosture(report).verified ? "Open source observations" : "Saved open observations"}: <strong>{report.summary?.open ?? "Unknown"}</strong></span><span>Last-known incidents: <strong>{report.summary?.unavailable ?? "Unknown"}</strong></span>
       </div>
       <small>PE and PC observations retain separate source identities. Matching affected entities and events provide context; counts are not deduplicated infrastructure incidents.</small>
     </section>
@@ -133,7 +133,7 @@ export function MonitoringPage(props: { authToken: string; initial: MonitoringRe
           <td>{item.affected_entities.map((e) => e.name).join(", ") || "Not reported"}<small>{item.source}</small></td><td>{date(item.last_occurrence_at || item.occurred_at)}<small>Observed {age(item.observed_at)} ago</small></td></tr>)}
       </tbody></table></div>{!filtered.length ? <p>No matching incidents in the saved evidence. Check source completeness and freshness before drawing conclusions.</p> : null}
     </section>}
-    <details className="panel ops-coverage"><summary>Prism events <span>{report.events.length} collected events � investigation context</span></summary><p>Event proximity or shared entities do not prove root cause.</p><EventTable events={report.events} /></details>
+    <details className="panel ops-coverage"><summary>Prism events <span>{report.events.length} collected events · investigation context</span></summary><p>Event proximity or shared entities do not prove root cause.</p><EventTable events={report.events} /></details>
   </>;
 }
 

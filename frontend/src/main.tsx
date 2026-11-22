@@ -1,6 +1,8 @@
+import { WorkerStatus } from "./workerStatus";
+import { PageGuidance } from "./pageGuidance";
 import { OperatorDashboard } from "./operatorDashboard";
 import { MonitoringPage, MonitoringSummary, type MonitoringReport } from "./monitoring";
-import { hasCollectionPermission, ageSeconds, groupAuthenticationFailures, groupedFindingObservations, runIsStale, collectionStatus, inventoryHealthStatus, domainStatus } from "./operational";
+import { monitoringPosture, collectionEvidenceConfidence, connectionTestPosture, hasCollectionPermission, ageSeconds, groupAuthenticationFailures, groupedFindingObservations, runIsStale, collectionStatus, inventoryHealthStatus, domainStatus } from "./operational";
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
@@ -41,7 +43,7 @@ import "./enterprise.css";
 const API_BASE = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8000";
 const STATIC_DEMO = import.meta.env.VITE_STATIC_DEMO === "true";
 const ASSET_BASE = import.meta.env.BASE_URL ?? "/";
-const APP_VERSION = "0.1.0";
+const APP_VERSION = __APP_BUILD__.version;
 const APP_VERSION_TAG = `v${APP_VERSION}`;
 
 export type HealthStatus = "CRITICAL" | "UNKNOWN" | "WARNING" | "OVERDUE" | "HEALTHY";
@@ -320,6 +322,7 @@ type HealthRunHistoryItem = {
 };
 
 type SupportStatus = {
+  build?: typeof __APP_BUILD__;
   mode: {
     environment: string;
     demo_mode: boolean;
@@ -1135,7 +1138,6 @@ function App() {
             <h1>{activeMeta.label}</h1>
           </div>
           <div className="topbar-actions">
-            <span className="mode-badge">Read-only lab evidence</span>
             {currentUser ? <span className="mode-badge">{currentUser.role_name}</span> : null}
             <button
               className="theme-toggle"
@@ -1160,6 +1162,8 @@ function App() {
         {STATIC_DEMO ? <Banner message="Public GitHub Pages demo: static read-only sample data. Docker or the appliance bundle is required for live Prism collection." /> : null}
         {error ? <Banner tone="unknown" message={error} /> : null}
         {loading ? <Banner message="Loading local assurance data..." /> : null}
+        <WorkerStatus token={authToken} demo={STATIC_DEMO} api={API_BASE} admin={currentUser?.role_name === "Admin"} />
+        <PageGuidance page={activePage} inventoryAt={run?.generated_at} monitoringAt={monitoring?.generated_at} />
 
         {activePage === "triage" ? <MonitoringSummary report={monitoring} onOpen={() => setActivePage("incidents")} /> : null}
         {activePage === "incidents" ? (STATIC_DEMO ? <Banner message="Live Prism incident collection requires the appliance. No monitoring requests are sent from the static demo." /> : <MonitoringPage authToken={authToken} initial={monitoring} initialTarget={incidentTarget} onUpdate={setMonitoring} canCollect={hasCollectionPermission(currentUser)} />) : null}
@@ -1350,9 +1354,10 @@ function TriagePage(props: {
   const openGates = props.readiness?.gates.filter((gate) => gate.status !== "PASS") ?? [];
   const nextRun = props.schedule?.occurrences[0] ?? null;
   const domains = operationalDomains(props.run, props.support);
+  const monitoringCurrent = monitoringPosture(props.monitoring).verified;
   const activeIncidents = (props.monitoring?.incidents ?? []).filter((item) => item.availability === "CURRENT" && !item.resolved && ["CRITICAL", "WARNING"].includes(item.severity));
   const criticalCount = activeIncidents.filter((item) => item.severity === "CRITICAL").length;
-  const primaryAction = activeIncidents.length ? `Investigate ${criticalCount} critical and ${activeIncidents.length - criticalCount} warning Prism alert observations; verify affected workload impact.` : props.problemCollectors.length ? "Fix the failing collector, then rerun health collection." : openGates.length ? "Review open readiness gates before production claims." : "Export evidence or keep monitoring scheduled health checks.";
+  const primaryAction = !monitoringCurrent ? "Refresh Prism monitoring before treating saved alerts as current. Validate service impact independently." : activeIncidents.length ? `Investigate ${criticalCount} critical and ${activeIncidents.length - criticalCount} warning Prism alert observations; verify affected workload impact.` : props.problemCollectors.length ? "Fix the failing collector, then rerun health collection." : openGates.length ? "Review open readiness gates before production claims." : "Export evidence or keep monitoring scheduled health checks.";
   return (
     <>
       <section className="triage-hero">
@@ -1370,9 +1375,9 @@ function TriagePage(props: {
       <section className="triage-grid">
         <TriageStep number="1" title="Is the estate healthy?" status={inventoryHealthStatus(props.run)} detail={`Health not evaluated. ${props.problemCollectors.length} collection incident(s).`} action="Open health runs" onAction={() => props.onNavigate("runs")} />
         <TriageStep number="2" title="Is the data fresh?" status={lastRun?.age_seconds != null && lastRun.age_seconds < 24 * 60 * 60 ? "HEALTHY" : "WARNING"} detail={lastRun?.age_seconds != null ? `Latest run is ${formatAge(lastRun.age_seconds)} old.` : "No run history is available."} action="Review evidence" onAction={() => props.onNavigate("evidence")} />
-        <TriageStep number="3" title="Which collector failed?" status={props.problemCollectors.length ? "WARNING" : "HEALTHY"} detail={props.problemCollectors[0]?.summary ?? "All latest collectors are healthy."} action="Open details" onAction={() => props.onNavigate("runs")} />
-        <TriageStep number="4" title="What changed?" status={runChangeStatus(lastRun, previousRun)} detail={runChangeSummary(props.history)} action="View timeline" onAction={() => props.onNavigate("runs")} />
-        <TriageStep number="5" title="What should I do next?" status={criticalCount ? "CRITICAL" : activeIncidents.length || props.problemCollectors.length || openGates.length ? "WARNING" : "UNKNOWN"} detail={primaryAction} action={activeIncidents.length ? "Open Prism incidents" : props.problemCollectors.length ? "Fix connection" : "Review gates"} onAction={() => props.onNavigate(activeIncidents.length ? "incidents" : "settings")} />
+        <TriageStep number="3" title="Which collector failed?" status={!props.run?.collectors.length ? "UNKNOWN" : props.problemCollectors.length ? "WARNING" : runIsStale(props.run) ? "OVERDUE" : "HEALTHY"} detail={props.problemCollectors[0]?.summary ?? (props.run?.collectors.length ? "No failures in the saved inventory run. Check its age; this is not a live health verdict." : "No inventory collection evidence is available.")} action="Open details" onAction={() => props.onNavigate("runs")} />
+        <TriageStep number="4" title="What changed in collection counts?" status={runChangeStatus(lastRun, previousRun)} detail={runChangeSummary(props.history)} action="View timeline" onAction={() => props.onNavigate("runs")} />
+        <TriageStep number="5" title="What should I do next?" status={!monitoringCurrent ? "UNKNOWN" : criticalCount ? "CRITICAL" : activeIncidents.length || props.problemCollectors.length || openGates.length ? "WARNING" : "UNKNOWN"} detail={primaryAction} action={activeIncidents.length ? "Open Prism incidents" : props.problemCollectors.length ? "Fix connection" : "Review gates"} onAction={() => props.onNavigate(activeIncidents.length ? "incidents" : "settings")} />
         <TriageStep number="6" title="Where is the evidence?" status={confidence.status} detail={`${confidence.label}: ${confidence.detail}`} action="Open evidence" onAction={() => props.onNavigate("evidence")} />
       </section>
       <DomainHealthGrid
@@ -1383,9 +1388,9 @@ function TriagePage(props: {
       />
       <section className="panel two-column">
         <div>
-          <PanelHeading title="Immediate Attention" description="Only the items an operator should act on first." />
+          <PanelHeading title="Immediate Attention" description="Saved alert priorities and collection gaps. Confirm evidence freshness before acting." />
           <div className="attention-list">
-            {activeIncidents.slice(0, 3).map((item) => <article className="attention-item" key={item.id}><StatusBadge status={item.severity === "CRITICAL" ? "CRITICAL" : "WARNING"} /><div><strong>{item.title}</strong><p>{item.source} · {item.triage.category}</p><button className="table-action" onClick={() => props.onNavigate("incidents")}>Open incident queue and recommended triage</button></div></article>)}
+            {activeIncidents.slice(0, 3).map((item) => <article className="attention-item" key={item.id}><StatusBadge status={item.severity === "CRITICAL" ? "CRITICAL" : "WARNING"} /><div><strong>{item.title}</strong><p>{item.source} · {monitoringCurrent ? "Current source evidence" : "Saved / unconfirmed"} · {item.triage.category}</p><button className="table-action" onClick={() => props.onNavigate("incidents")}>Open incident queue and recommended triage</button></div></article>)}
             {props.problemCollectors.map((collector) => (
               <article className="attention-item" key={`${collector.source}-${collector.endpoint_alias}-${collector.domain ?? "inventory"}-${collector.path}`}>
                 <StatusBadge status={collector.status} />
@@ -1398,7 +1403,7 @@ function TriagePage(props: {
                 <div><strong>{gate.name}</strong><p>{gate.summary}</p><small>{gate.evidence.join(", ")}</small></div>
               </article>
             ))}
-            {!props.problemCollectors.length && !activeIncidents.length && !openGates.length ? <div className="empty-state">No urgent operator actions are open.</div> : null}
+            {!props.problemCollectors.length && !activeIncidents.length && !openGates.length ? <div className="empty-state">No priorities in the available evidence. Confirm current monitoring and service impact before closing triage.</div> : null}
           </div>
         </div>
         <div>
@@ -1407,7 +1412,7 @@ function TriagePage(props: {
             {props.history.slice(0, 5).map((item) => (
               <div className="timeline-item" key={`${item.run_id}-${item.generated_at}`}>
                 <Clock3 size={16} />
-                <div><strong>{item.status}</strong><p>{item.generated_at ? formatDate(item.generated_at) : "Unknown time"} · {item.cluster_count} source observation(s), {item.collector_failure_count} issue(s)</p></div>
+                <div><strong>{item.status === "HEALTHY" ? "COLLECTED" : item.status}</strong><p>{item.generated_at ? formatDate(item.generated_at) : "Unknown time"} · {item.cluster_count} source observation(s), {item.collector_failure_count} issue(s)</p></div>
               </div>
             ))}
             {!props.history.length ? <div className="empty-state">No run timeline is available.</div> : null}
@@ -1495,7 +1500,7 @@ function RunsPage(props: { run: InventoryRun | null; history: HealthRunHistoryIt
         { method: "POST" },
         props.authToken
       );
-      setManualRunMessage(`Completed collection ${result.run_id} with collection status ${result.status}. Infrastructure health is not evaluated.`);
+      setManualRunMessage(`Completed collection ${result.run_id} with collection status ${result.status === "HEALTHY" ? "COLLECTED" : result.status}. Infrastructure health is not evaluated.`);
       await props.onRunComplete();
     } catch (runError) {
       setManualRunMessage(runError instanceof Error ? runError.message : "Unable to start health run.");
@@ -1507,11 +1512,11 @@ function RunsPage(props: { run: InventoryRun | null; history: HealthRunHistoryIt
   return (
     <>
       <section className="panel">
-        <PanelHeading title="Manual Health Check" description="Start a read-only health collection immediately and write evidence locally." />
+        <PanelHeading title="Read-only inventory collection" description="Collect inventory and response evidence. This does not run an independent infrastructure-health assessment." />
         <div className="toolbar">
           <button className="primary-button" type="button" onClick={startManualRun} disabled={manualRunBusy}>
             <Activity size={16} />
-            {manualRunBusy ? "Starting..." : "Start health check"}
+            {manualRunBusy ? "Starting..." : "Collect inventory"}
           </button>
           {manualRunMessage ? <span className="inline-message">{manualRunMessage}</span> : null}
         </div>
@@ -1519,9 +1524,9 @@ function RunsPage(props: { run: InventoryRun | null; history: HealthRunHistoryIt
       <section className="panel">
         <PanelHeading title="Run Details" description="Latest local inventory evidence with collector timing, endpoint and remediation context." />
         <div className="run-visual-grid">
-          <RunVisualCard label="Collection outcome" value={collectionStatus(props.run)} status={collectionStatus(props.run)} detail={props.run ? `${formatDate(props.run.generated_at)} · health not evaluated` : "No run available"} />
-          <RunVisualCard label="Collector Coverage" value={`${healthyCollectors}/${collectorCount}`} status={collectorCount && healthyCollectors === collectorCount ? "HEALTHY" : "WARNING"} detail={`${collectorCount - healthyCollectors} issue(s)`} />
-          <RunVisualCard label="Current source observations" value={`${props.run?.clusters.length ?? 0}`} status="UNKNOWN" detail="Inventory evidence only; health not evaluated" />
+          <RunVisualCard label="Collection outcome" value={collectionStatus(props.run) === "HEALTHY" ? "COLLECTED" : collectionStatus(props.run)} status={collectionStatus(props.run)} detail={props.run ? `${formatDate(props.run.generated_at)} · health not evaluated` : "No run available"} />
+          <RunVisualCard label="Collector Coverage" value={`${healthyCollectors}/${collectorCount}`} status={collectorCount && healthyCollectors === collectorCount ? "HEALTHY" : "WARNING"} detail={`${collectorCount - healthyCollectors} collection issue(s); saved run, not current health`} />
+          <RunVisualCard label="Saved inventory observations" value={`${props.run?.clusters.length ?? 0}`} status="UNKNOWN" detail="Inventory evidence only; health not evaluated" />
           <RunVisualCard label="Last Run Age" value={latestHistory?.age_seconds != null ? formatAge(latestHistory.age_seconds) : "-"} status={latestHistory?.age_seconds != null && latestHistory.age_seconds < 24 * 60 * 60 ? "HEALTHY" : "WARNING"} detail={latestHistory?.run_type ?? "No history"} />
         </div>
         <dl className="details-grid">
@@ -1586,17 +1591,11 @@ function FindingsPage(props: { run: InventoryRun | null }) {
   return (
     <section className="panel">
       <PanelHeading title="Collection Diagnostics" description="Collection observations; successful requests do not establish infrastructure health. Authentication failures are grouped by endpoint below; individual checks remain available." />
-      <div className="severity-grid">
-        {severities.map((severity) => {
-          const count = observations.filter((observation) => observation.status === severity).length;
-          return (
-            <button className={`severity-card ${severity.toLowerCase()} ${filter === severity ? "active" : ""}`} type="button" onClick={() => setFilter(severity)} key={severity}>
-              <span className={`status ${severity.toLowerCase()}`}>{severity === "HEALTHY" ? "COLLECTED" : severity}</span>
-              <strong>{count}</strong>
-              <span>{severity === "HEALTHY" ? "Collected" : labelize(severity.toLowerCase())}</span>
-            </button>
-          );
-        })}
+      <div className="run-visual-grid">
+        <RunVisualCard label="Collection issues" value={observations.filter((item) => item.status === "CRITICAL").length.toString()} status="UNKNOWN" detail="Critical collection observations; not infrastructure incidents" />
+        <RunVisualCard label="Warnings" value={observations.filter((item) => item.status === "WARNING").length.toString()} status="UNKNOWN" detail="Warnings in the saved inventory run" />
+        <RunVisualCard label="Unconfirmed checks" value={observations.filter((item) => item.status === "UNKNOWN").length.toString()} status="UNKNOWN" detail="Checks without a confirmed collection outcome" />
+        <RunVisualCard label="Collected checks" value={observations.filter((item) => item.status === "HEALTHY").length.toString()} status="UNKNOWN" detail="Saved successful responses; check evidence age before use" />
       </div>
       <div className="toolbar">
         <button className={filter === "all" ? "primary-button" : "secondary-button"} type="button" onClick={() => setFilter("all")}>All</button>
@@ -1606,16 +1605,21 @@ function FindingsPage(props: { run: InventoryRun | null }) {
           </button>
         ))}
       </div>
-      <DataTable
-        columns={["Check", "Status", "Source", "Summary"]}
-        rows={visibleObservations.map((observation) => [
-          observation.check_id,
-          <span className={`status ${observation.status.toLowerCase()}`}>{observation.status === "HEALTHY" ? "COLLECTED" : observation.status}</span>,
-          labelize(observation.source),
-          observation.summary
-        ])}
-        emptyText="No observations are available."
-      />
+      <p className="diagnostics-result-count" role="status">Showing {visibleObservations.length} of {observations.length} saved collection observations. Counts reflect grouped diagnostics, not unique cluster faults.</p>
+      <div className="monitoring-table-wrap">
+        <table className="monitoring-table diagnostics-table">
+          <thead><tr><th scope="col">Check</th><th scope="col">Collection result</th><th scope="col">Source</th><th scope="col">Observation</th></tr></thead>
+          <tbody>
+            {visibleObservations.map((observation, index) => <tr key={`${observation.source}-${observation.check_id}-${index}`}>
+              <td><code>{observation.check_id}</code></td>
+              <td><span className={`status ${observation.status.toLowerCase()}`}>{observation.status === "HEALTHY" ? "COLLECTED" : observation.status}</span></td>
+              <td>{labelize(observation.source)}</td>
+              <td>{observation.summary}</td>
+            </tr>)}
+            {!visibleObservations.length && <tr><td colSpan={4}>{observations.length ? "No observations match this filter. Select All to review the saved run." : "No collection observations are available. Collect inventory from Health Runs."}</td></tr>}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }
@@ -1735,9 +1739,9 @@ function SchedulesPage(props: { schedule: SchedulePreview | null; authToken: str
         {scheduleMessage ? <Banner message={scheduleMessage} /> : null}
         <div className="schedule-ops-grid">
           <RunVisualCard label="Configured" value={schedules.length.toString()} status={schedules.length ? "HEALTHY" : "UNKNOWN"} detail={`${enabledSchedules} enabled`} />
-          <RunVisualCard label="Next Due" value={nextOccurrence ? formatDate(nextOccurrence.occurrence_at) : "None"} status={nextOccurrence?.status === "ready" ? "HEALTHY" : "WARNING"} detail={nextOccurrence?.reason ?? "No preview"} />
-          <RunVisualCard label="Blocked Targets" value={blockedTargets.toString()} status={blockedTargets ? "WARNING" : "HEALTHY"} detail="Lock / idempotency guard" />
-          <RunVisualCard label="Last Scheduled Run" value={lastScheduledRun?.status ?? "-"} status={scheduleRunStatus(lastScheduledRun?.status)} detail={lastScheduledRun?.started_at ? formatDate(lastScheduledRun.started_at) : "No scheduled history"} />
+          <RunVisualCard label="Next due (preview)" value={nextOccurrence ? formatDate(nextOccurrence.occurrence_at) : "None"} status={nextOccurrence?.status === "ready" ? "HEALTHY" : "WARNING"} detail={`${nextOccurrence?.reason ?? "No preview"} · not execution evidence`} />
+          <RunVisualCard label="Blocked Targets" value={blockedTargets.toString()} status={!nextOccurrence ? "UNKNOWN" : blockedTargets ? "WARNING" : "HEALTHY"} detail="Lock / idempotency guard" />
+          <RunVisualCard label="Last Scheduled Run" value={lastScheduledRun?.status === "HEALTHY" ? "COLLECTED" : lastScheduledRun?.status ?? "-"} status={scheduleRunStatus(lastScheduledRun?.status)} detail={lastScheduledRun?.started_at ? formatDate(lastScheduledRun.started_at) : "No scheduled history"} />
         </div>
         <div className="toolbar">
           <button className="secondary-button" type="button" onClick={runDueSchedules} disabled={runnerBusy}>
@@ -1838,12 +1842,12 @@ function EvidencePage(props: { run: InventoryRun | null; manifest: EvidenceManif
   return (
     <>
       <section className="panel">
-        <PanelHeading title="Evidence Confidence" description="Support-safe summary of whether the latest evidence is live, fresh, complete and production-trustworthy." />
+        <PanelHeading title="Evidence Confidence" description="Age, completeness and recorded TLS for saved inventory. These checks do not establish production approval." />
         <div className="evidence-flow">
           <EvidenceStep icon={<Activity size={18} />} label="Collected" status={props.support?.latest_run.available ? "HEALTHY" : "UNKNOWN"} detail={props.support?.latest_run.run_type ?? "No run"} />
-          <EvidenceStep icon={<FileJson size={18} />} label="Hashed" status={props.manifest?.manifest_sha256 ? "HEALTHY" : "UNKNOWN"} detail={props.manifest ? truncate(props.manifest.manifest_sha256) : "No manifest"} />
+          <EvidenceStep icon={<FileJson size={18} />} label="Hash recorded" status={props.manifest?.manifest_sha256 ? "HEALTHY" : "UNKNOWN"} detail={props.manifest ? truncate(props.manifest.manifest_sha256) : "No manifest"} />
           <EvidenceStep icon={<History size={18} />} label="Retained" status={props.retention?.inventory_runs ? "HEALTHY" : "UNKNOWN"} detail={props.retention ? `${props.retention.inventory_runs} run(s)` : "Policy not loaded"} />
-          <EvidenceStep icon={<ShieldCheck size={18} />} label="Trusted" status={confidence.status} detail={confidence.label} />
+          <EvidenceStep icon={<ShieldCheck size={18} />} label="Collection trust" status={confidence.status} detail={confidence.label} />
         </div>
         <dl className="details-grid">
           <div><dt>Confidence</dt><dd><StatusBadge status={confidence.status} /> {confidence.label}</dd></div>
@@ -2262,10 +2266,10 @@ function SettingsPage(props: {
         })}
       </div>
       <div className="settings-overview-grid">
-        <RunVisualCard label="Connections" value={connections.length.toString()} status={connections.some((connection) => connection.status === "READY") ? "HEALTHY" : "UNKNOWN"} detail={`${connections.filter((connection) => connection.status === "READY").length} ready`} />
-        <RunVisualCard label="RBAC" value={`${users.length} user(s)`} status={users.length ? "HEALTHY" : "WARNING"} detail={`${roles.length} role(s) configured`} />
+        <RunVisualCard label="Connection tests" value={connections.length.toString()} status={connectionTestPosture(connections.map(connection => connection.status))} detail={`${connections.filter((connection) => connection.status === "READY").length}/${connections.length} latest tests passed; not continuous monitoring`} />
+        <RunVisualCard label="Accounts configured" value={`${users.length} user(s)`} status="UNKNOWN" detail={`${roles.length} role(s); configuration is not effective-access validation`} />
         <RunVisualCard label="NCC Gate" value={`${selectedNccCheckIds.length}`} status={props.nccPlan?.ncc_enabled ? "HEALTHY" : "UNKNOWN"} detail={props.nccPlan?.reason ?? "Execution gated"} />
-        <RunVisualCard label="Audit" value={auditEvents.length.toString()} status={auditEvents.length ? "HEALTHY" : "UNKNOWN"} detail="Administrative event trail" />
+        <RunVisualCard label="Loaded audit events" value={auditEvents.length.toString()} status="UNKNOWN" detail="Loaded records only; not audit completeness or control validation" />
       </div>
       {settingsError ? <Banner tone="unknown" message={settingsError} /> : null}
 
@@ -2443,9 +2447,11 @@ function AboutPage(props: {
     product: "Cluster Assurance Orchestrator for Nutanix Environments",
     uiVersion: APP_VERSION,
     versionTag: APP_VERSION_TAG,
-    sourceRef: "not reported",
-    commit: "not reported",
-    buildDate: "not reported",
+    sourceRef: __APP_BUILD__.source_state,
+    commit: __APP_BUILD__.revision,
+    buildDate: __APP_BUILD__.built_at,
+    channel: __APP_BUILD__.channel,
+    apiBuild: props.support?.build ?? null,
     updatePackage: "not reported",
     appliedUpdate: "unknown",
     containerImage: "not reported",
@@ -2475,7 +2481,7 @@ function AboutPage(props: {
         <div className="about-build-title">
           <span>Installed Build</span>
           <strong>{APP_VERSION_TAG}</strong>
-          <p>Use this value to distinguish appliance and UI builds during support handover.</p>
+          <p>Controlled production-test candidate; not production approval. Record UI and API build identities during support handover.</p>
         </div>
         <dl className="about-grid">
           <div><dt>UI Version</dt><dd>{APP_VERSION}</dd></div>
@@ -2483,11 +2489,14 @@ function AboutPage(props: {
           <div><dt>Source Ref / Patch</dt><dd>{buildInfo.sourceRef}</dd></div>
           <div><dt>Commit</dt><dd>{buildInfo.commit}</dd></div>
           <div><dt>Build Date</dt><dd>{buildInfo.buildDate}</dd></div>
+          <div><dt>Release channel</dt><dd>{buildInfo.channel}</dd></div>
+          <div><dt>API version / revision / source</dt><dd>{buildInfo.apiBuild ? `${buildInfo.apiBuild.version} / ${buildInfo.apiBuild.revision} / ${buildInfo.apiBuild.source_state}` : "Not verified"}</dd></div>
           <div><dt>Update Package</dt><dd>{buildInfo.updatePackage}</dd></div>
           <div><dt>Applied Update</dt><dd>{buildInfo.appliedUpdate}</dd></div>
           <div><dt>Container Image</dt><dd>{buildInfo.containerImage}</dd></div>
         </dl>
       </div>
+      {(!buildInfo.apiBuild || buildInfo.apiBuild.version !== APP_VERSION || buildInfo.apiBuild.revision !== __APP_BUILD__.revision || buildInfo.apiBuild.source_state !== "clean" || __APP_BUILD__.source_state !== "clean" || __APP_BUILD__.revision === "unknown") && <p className="banner warning">Build provenance is unverified, differs, or contains local changes. Do not accept this build as an immutable test release.</p>}
       <dl className="about-meta">
         <div><dt>Runtime Mode</dt><dd>{props.support ? `${props.support.mode.environment}${props.support.mode.demo_mode ? " / demo" : ""}` : "not reported"}</dd></div>
         <div><dt>API URL</dt><dd>{buildInfo.apiUrl}</dd></div>
@@ -2736,9 +2745,9 @@ function ReadinessPage(props: { report: SecurityReadinessReport | null }) {
     <section className="panel">
       <PanelHeading title="Readiness Gates" description="Production approval remains blocked until these controls are closed and evidenced." />
       <div className="visual-summary-grid compact-visual">
-        <RunVisualCard label="Passed" value={passCount.toString()} status="HEALTHY" detail={`${gates.length} total gate(s)`} />
+        <RunVisualCard label="Listed gates passed" value={passCount.toString()} status={!gates.length ? "UNKNOWN" : passCount ? "HEALTHY" : "WARNING"} detail={`${gates.length} total gate(s)`} />
         <RunVisualCard label="Incomplete gates" value={incompleteCount.toString()} status={!gates.length ? "UNKNOWN" : incompleteCount ? "WARNING" : "HEALTHY"} detail={incompleteCount || !gates.length ? "Production not approved" : "All listed gates passed"} />
-        <RunVisualCard label="Warnings" value={warningCount.toString()} status={warningCount ? "WARNING" : "HEALTHY"} detail="Needs evidence or closure" />
+        <RunVisualCard label="Warnings" value={warningCount.toString()} status={!gates.length ? "UNKNOWN" : warningCount ? "WARNING" : "HEALTHY"} detail="Needs evidence or closure" />
         <RunVisualCard label="Maturity" value={props.report?.maturity ?? "Unknown"} status={!gates.length ? "UNKNOWN" : incompleteCount || blockedCount || warningCount ? "WARNING" : "HEALTHY"} detail="Implementation is not UAT approval" />
       </div>
       <DataTable
@@ -2798,7 +2807,7 @@ function RbacPage(props: {
           </label>
           <label>
             <span>Email</span>
-            <input value={props.userDraft.email} onChange={(event) => props.setUserDraft((draft) => ({ ...draft, email: event.target.value }))} placeholder="jane@example.com" />
+            <input value={props.userDraft.email} onChange={(event) => props.setUserDraft((draft) => ({ ...draft, email: event.target.value }))} placeholder="operator@example.invalid" />
           </label>
           <label>
             <span>Role</span>
@@ -2945,10 +2954,10 @@ function AuditEventsPage(props: { events: AuditEvent[] }) {
     <section className="panel">
       <PanelHeading title="Audit Log" description="Append-only administrative events for sign-in, RBAC, connection and credential changes." />
       <div className="visual-summary-grid compact-visual">
-        <RunVisualCard label="Events" value={props.events.length.toString()} status={props.events.length ? "HEALTHY" : "UNKNOWN"} detail="Persisted audit records" />
-        <RunVisualCard label="Auth Events" value={authEvents.toString()} status={authEvents ? "HEALTHY" : "UNKNOWN"} detail="Sign-in activity" />
-        <RunVisualCard label="Secret Changes" value={secretEvents.toString()} status={secretEvents ? "WARNING" : "HEALTHY"} detail="Review credential movement" />
-        <RunVisualCard label="Visible" value={filteredEvents.length.toString()} status="HEALTHY" detail="After filters" />
+        <RunVisualCard label="Loaded events" value={props.events.length.toString()} status="UNKNOWN" detail="Currently loaded records; not all historical activity" />
+        <RunVisualCard label="Authentication events" value={authEvents.toString()} status="UNKNOWN" detail="Action-name matches; inspect outcomes in each record" />
+        <RunVisualCard label="Credential / connection events" value={secretEvents.toString()} status="UNKNOWN" detail="Includes connection tests; does not prove a secret changed" />
+        <RunVisualCard label="Visible records" value={filteredEvents.length.toString()} status="UNKNOWN" detail="After filters within the loaded records" />
       </div>
       <div className="toolbar filter-toolbar">
         <label>
@@ -3152,7 +3161,7 @@ function Banner(props: { message: string; tone?: string }) {
 }
 
 function StatusBadge(props: { status: HealthStatus }) {
-  return <span className={`status ${props.status.toLowerCase()}`}>{props.status}</span>;
+  return <span className={`status ${props.status.toLowerCase()}`}>{props.status === "HEALTHY" ? "PASS" : props.status}</span>;
 }
 
 function DataTable(props: { columns: string[]; rows: React.ReactNode[][]; emptyText: string }) {
@@ -3467,23 +3476,10 @@ function yesNo(value: boolean) {
   return value ? "Yes" : "No";
 }
 
-function evidenceConfidence(support: SupportStatus | null): { status: HealthStatus; label: string; detail: string } {
-  if (!support?.latest_run.available) {
-    return { status: "UNKNOWN", label: "No evidence", detail: "Run a health check to create local evidence." };
-  }
-  if (support.mode.demo_mode) {
-    return { status: "UNKNOWN", label: "Synthetic", detail: "Demo evidence only; Prism was not contacted." };
-  }
-  if (support.collector_failures.length) {
-    return { status: "WARNING", label: "Partial", detail: `${support.collector_failures.length} collector(s) failed.` };
-  }
-  if (support.latest_run.age_seconds != null && support.latest_run.age_seconds > 24 * 60 * 60) {
-    return { status: "WARNING", label: "Stale", detail: "Latest evidence is older than 24 hours." };
-  }
-  if (support.latest_run.tls_mode !== "strict") {
-    return { status: "WARNING", label: "TLS unverified", detail: support.latest_run.tls_mode === "insecure_skip_verify" ? "Latest collection bypassed TLS verification." : "Latest run did not record TLS verification mode." };
-  }
-  return { status: "HEALTHY", label: "Collection verified", detail: "Fresh, complete collection with recorded strict TLS; infrastructure health and UAT remain unverified." };
+function evidenceConfidence(support: SupportStatus | null) {
+  return collectionEvidenceConfidence({ available: !!support?.latest_run.available, demo: !!support?.mode.demo_mode,
+    failureCount: support?.collector_failures.length ?? 0, age: support?.latest_run.age_seconds ?? null,
+    tls: support?.latest_run.tls_mode ?? null });
 }
 
 function operationalDomains(run: InventoryRun | null, support: SupportStatus | null): OperationalDomain[] {
@@ -3542,7 +3538,7 @@ function domainCollectorCard(
     id,
     label,
     status: "UNKNOWN",
-    value: `${healthy}/${collectors.length} ready`,
+    value: `${healthy}/${collectors.length} collected`,
     detail: issue?.summary ?? (id === "storage" && completeIds ? `${uniqueIds.size} unique containers · ${itemCount} PE/PC observations` : `${itemCount} ${id} source observation(s); uniqueness not established.`),
     coverage: collectorCoverage(collectors),
     evidence: `Health not evaluated. ${collectors.length} collection artifact(s); evidence ${runIsStale(run) ? "stale or age unknown" : "fresh"}.`,
@@ -3589,7 +3585,7 @@ function runChangeSummary(history: HealthRunHistoryItem[]) {
   if (latest.status !== previous.status) {
     changes.unshift(`status ${previous.status} to ${latest.status}`);
   }
-  return changes.join(", ");
+  return changes.join(", ") + ". Counts only; configuration and service-state changes were not compared.";
 }
 
 function runChangeStatus(latest: HealthRunHistoryItem | null, previous: HealthRunHistoryItem | null): HealthStatus {
@@ -3597,9 +3593,9 @@ function runChangeStatus(latest: HealthRunHistoryItem | null, previous: HealthRu
     return "UNKNOWN";
   }
   if (latest.status !== previous.status || latest.collector_failure_count !== previous.collector_failure_count) {
-    return latest.collector_failure_count > previous.collector_failure_count ? "WARNING" : "HEALTHY";
+    return latest.collector_failure_count > previous.collector_failure_count ? "WARNING" : "UNKNOWN";
   }
-  return "HEALTHY";
+  return "UNKNOWN";
 }
 
 function dashboardReason(primaryIssue: Collector | null, support: SupportStatus | null) {

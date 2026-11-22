@@ -1,4 +1,4 @@
-name: GitHub Pages Demo
+name: Project site, tutorials and PDF library
 
 on:
   push:
@@ -32,12 +32,24 @@ jobs:
         env:
           VITE_STATIC_DEMO: "true"
           VITE_API_BASE: ""
-          VITE_PUBLIC_BASE_PATH: "/Cluster-Assurance-Orchestrator/"
+          VITE_PUBLIC_BASE_PATH: "/Cluster-Assurance-Orchestrator/demo/"
+          CAO_BUILD_REVISION: ${{ github.sha }}
+          CAO_SOURCE_STATE: "clean"
         run: npm run build
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Verify curated site and stage demo
+        run: |
+          python -m pip install pypdf
+          python scripts/check-publication.py --site site
+          mkdir -p site/demo
+          cp -R frontend/dist/. site/demo/
+          python scripts/check-publication.py --site site --require-demo
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4
         with:
-          path: frontend/dist
+          path: site
 
   deploy:
     environment:

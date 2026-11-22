@@ -40,3 +40,14 @@ def test_pc_storage_reads_v4_and_preserves_raw_evidence(monkeypatch, tmp_path, p
     assert result.status_code == code
     assert result.raw_artifact.sha256 == hashlib.sha256(body).hexdigest()
     assert Path(result.raw_artifact.uri).read_bytes() == body
+
+
+@pytest.mark.parametrize("total,error,expected", [(0,False,0),(1,False,None),(0,True,None)])
+def test_typed_empty_storage_envelope_is_not_mistaken_for_malformed_response(total,error,expected):
+    from app.adapters.nutanix import count_pc_storage_containers
+    payload = {"$objectType":"clustermgmt.v4.config.ListStorageContainersApiResponse",
+               "metadata":{"totalAvailableResults":total,"flags":[{"name":"hasError","value":error},{"name":"isTruncated","value":False}]}}
+    if expected is None:
+        with pytest.raises(ValueError): count_pc_storage_containers(json.dumps(payload).encode())
+    else:
+        assert count_pc_storage_containers(json.dumps(payload).encode()) == expected

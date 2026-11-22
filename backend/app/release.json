@@ -1,0 +1,6 @@
+{
+  "version": "0.2.0-rc.1",
+  "python_version": "0.2.0rc1",
+  "channel": "production-test-candidate",
+  "production_approved": false
+}

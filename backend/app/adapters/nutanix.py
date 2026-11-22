@@ -704,9 +704,21 @@ def count_payload_items(body: bytes) -> int:
 def count_pc_storage_containers(body: bytes) -> int:
     """Validate the v4 list envelope; never count an error or partial page as success."""
     payload = json.loads(body.decode("utf-8"))
-    if not isinstance(payload, dict) or not isinstance(payload.get("data"), list):
+    if not isinstance(payload, dict):
         raise ValueError("Expected a v4 storage-container list")
-    items = payload["data"]
+    # Observed PC empty-list envelope omits data. Accept only the exact typed,
+    # explicitly zero-result, non-error, non-truncated response; never an error body.
+    metadata = payload.get("metadata")
+    flags = metadata.get("flags", []) if isinstance(metadata, dict) else []
+    flag_values = {f.get("name"): f.get("value") for f in flags if isinstance(f, dict)}
+    empty_envelope = ("data" not in payload
+        and payload.get("$objectType") == "clustermgmt.v4.config.ListStorageContainersApiResponse"
+        and isinstance(metadata, dict) and type(metadata.get("totalAvailableResults")) is int
+        and metadata["totalAvailableResults"] == 0
+        and flag_values.get("hasError") is False and flag_values.get("isTruncated") is False)
+    if not empty_envelope and not isinstance(payload.get("data"), list):
+        raise ValueError("Expected a v4 storage-container list")
+    items = [] if empty_envelope else payload["data"]
     if not all(isinstance(item, dict) and (item.get("containerExtId") or item.get("extId")) for item in items):
         raise ValueError("Invalid storage-container records")
     metadata = payload.get("metadata")

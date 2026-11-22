@@ -69,7 +69,7 @@ The workflow publishes these as run artifacts and, for release builds, GitHub Re
 You can also build the same bundle locally:
 
 ```powershell
-.\scripts\build-appliance.ps1 -Version 0.1.0
+.\scripts\build-appliance.ps1 -Version 0.2.0-rc.1
 ```
 
 State the support boundary clearly:
@@ -78,3 +78,11 @@ State the support boundary clearly:
 - read-only Prism collection by default
 - lab TLS evidence is not production approval evidence
 - NCC is planning-only; SSH execution is disabled
+
+## Resource site and anonymisation
+
+The Pages artifact now consists of the curated `site/` tree plus the synthetic frontend at `site/demo/`. The root is the project overview, `/tutorials/` contains captioned synthetic video overviews and written tutorials, and `/documentation/` contains searchable, downloadable PDFs and SHA-256 values. Existing root demo bookmarks should use `/demo/`.
+
+Do not copy runtime evidence, connection exports, live incident text or lab screenshots into `site/`. Use `docs/guides/catalogue.json` as the curated content source; regenerate with `scripts/build-documentation.py`. Run `scripts/check-publication.py --site site --require-demo` on the assembled artifact. Automated checks are a backstop, not a guarantee that arbitrary added content is anonymous. Review every new asset before publication.
+
+Publication, GitHub release creation and production acceptance are distinct actions. Preparing these files does not publish the site or approve the appliance.

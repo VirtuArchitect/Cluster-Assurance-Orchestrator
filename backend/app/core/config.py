@@ -5,7 +5,7 @@ from pathlib import Path
 import os
 
 
-SECRET_KEYS = ("PASSWORD", "TOKEN", "SECRET", "COOKIE", "AUTHORIZATION", "DATABASE_URL")
+SECRET_KEYS = ("PASSWORD", "TOKEN", "SECRET", "COOKIE", "AUTHORIZATION", "DATABASE_URL", "WEBHOOK_URL")
 
 
 @dataclass(frozen=True)
@@ -39,9 +39,25 @@ class Settings:
     enable_alerts: bool = False
     alert_email_to: str = ""
     alert_webhook_url: str = ""
+    monitoring_enabled: bool = False
+    monitoring_interval_seconds: int = 60
+    inventory_interval_seconds: int = 900
+    monitoring_stale_seconds: int = 180
+    alert_max_attempts: int = 8
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
     log_level: str = "INFO"
 
     def validate_safety(self) -> None:
+        if self.monitoring_interval_seconds < 30 or self.inventory_interval_seconds < 60:
+            raise ValueError("Monitoring intervals must be at least 30s; inventory at least 60s")
+        if self.monitoring_stale_seconds < self.monitoring_interval_seconds * 2:
+            raise ValueError("Worker stale threshold must cover two monitoring intervals")
+        if self.alert_max_attempts < 1 or not 1 <= self.smtp_port <= 65535:
+            raise ValueError("Invalid delivery retry or SMTP configuration")
         if self.environment == "production" and self.tls_mode == "insecure_skip_verify":
             raise ValueError("insecure TLS mode is not allowed in production")
         if self.demo_mode and (self.enable_ncc or self.enable_ssh):
@@ -114,6 +130,16 @@ def load_settings(env_file: str | Path | None = None) -> Settings:
         enable_alerts=parse_bool(values.get("CAO_ENABLE_ALERTS", "false")),
         alert_email_to=str(values.get("CAO_ALERT_EMAIL_TO", "")),
         alert_webhook_url=str(values.get("CAO_ALERT_WEBHOOK_URL", "")),
+        monitoring_enabled=parse_bool(values.get("CAO_MONITORING_ENABLED", "false")),
+        monitoring_interval_seconds=int(values.get("CAO_MONITORING_INTERVAL_SECONDS", "60")),
+        inventory_interval_seconds=int(values.get("CAO_INVENTORY_INTERVAL_SECONDS", "900")),
+        monitoring_stale_seconds=int(values.get("CAO_MONITORING_STALE_SECONDS", "180")),
+        alert_max_attempts=int(values.get("CAO_ALERT_MAX_ATTEMPTS", "8")),
+        smtp_host=str(values.get("CAO_SMTP_HOST", "")),
+        smtp_port=int(values.get("CAO_SMTP_PORT", "587")),
+        smtp_username=str(values.get("CAO_SMTP_USERNAME", "")),
+        smtp_password=str(values.get("CAO_SMTP_PASSWORD", "")),
+        smtp_from=str(values.get("CAO_SMTP_FROM", "")),
         log_level=str(values.get("CAO_LOG_LEVEL", "INFO")),
     )
     settings.validate_safety()

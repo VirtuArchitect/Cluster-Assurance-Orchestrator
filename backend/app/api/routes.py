@@ -1,3 +1,5 @@
+from app.version import build_identity
+from app.services.monitoring_control import worker_status, connect as control_connect, channels as delivery_channels
 from datetime import UTC, datetime
 import json
 from pathlib import Path
@@ -316,6 +318,7 @@ def health(request: Request, store: Annotated[AdminStore, Depends(admin_store)])
     return {
         "status": "ok",
         "modeScope": "effective collection configuration",
+        "build": build_identity(),
         "environment": settings.environment,
         "demoMode": settings.demo_mode,
         "readOnlyMode": settings.read_only_mode,
@@ -729,9 +732,10 @@ def security_readiness(
 def alerts_status(
     request: Request,
     actor: Annotated[Principal, Depends(current_principal)],
+    store: Annotated[AdminStore, Depends(admin_store)],
 ) -> dict[str, Any]:
     require_permission(actor, "view_evidence")
-    return alert_status(request.app.state.settings)
+    return alert_status(store.inventory_settings_from_connections())
 
 
 @router.post("/alerts/test")
@@ -740,9 +744,55 @@ def alerts_test(
     actor: Annotated[Principal, Depends(require_admin)],
     store: Annotated[AdminStore, Depends(admin_store)],
 ) -> dict[str, Any]:
-    result = send_test_alert(request.app.state.settings)
+    result = send_test_alert(store.inventory_settings_from_connections())
     store.audit("alerts.tested", actor.user_id, "alert", "test", {"delivery": result.get("delivery")})
     return result
+
+
+@router.get("/monitoring/worker/status")
+def monitoring_worker_status(request: Request, actor: Annotated[Principal, Depends(current_principal)]) -> dict:
+    require_permission(actor, "view_evidence")
+    return worker_status(request.app.state.settings)
+
+
+@router.get("/monitoring/worker/ready")
+def monitoring_worker_ready(request: Request):
+    from fastapi.responses import JSONResponse
+    state = worker_status(request.app.state.settings)
+    return JSONResponse({"status": state["status"]}, status_code=200 if state["status"] == "RUNNING" else 503)
+
+
+@router.post("/monitoring/worker/retry-inventory")
+def retry_worker_inventory(request: Request, actor: Annotated[Principal, Depends(require_admin)], store: Annotated[AdminStore, Depends(admin_store)]) -> dict:
+    from app.services.monitoring_control import stamp
+    stamp(request.app.state.settings, last_inventory_attempt=0)
+    store.audit("monitoring.inventory_retry",actor.user_id,"worker","inventory",{})
+    return {"status":"QUEUED", "detail":"Inventory will be retried by the worker on its next collection cycle"}
+
+
+@router.get("/monitoring/deliveries")
+def monitoring_deliveries(request: Request, actor: Annotated[Principal, Depends(current_principal)]) -> dict:
+    require_permission(actor, "view_evidence")
+    with control_connect(request.app.state.settings) as db:
+        rows = db.execute("SELECT id,channel,status,attempts,created,updated,last_error FROM deliveries ORDER BY created DESC LIMIT 50").fetchall()
+    return {"items": [dict(row) for row in rows], "scope": "Latest 50 delivery attempts; receiver acceptance is not human acknowledgement"}
+
+
+@router.post("/monitoring/deliveries/{delivery_id}/retry")
+def retry_monitoring_delivery(delivery_id: str, request: Request, actor: Annotated[Principal, Depends(require_admin)], store: Annotated[AdminStore, Depends(admin_store)]) -> dict:
+    from hashlib import sha256
+    import time
+    settings = request.app.state.settings
+    with control_connect(settings) as db:
+        db.execute("BEGIN IMMEDIATE")
+        row = db.execute("SELECT * FROM deliveries WHERE id=? AND status='DEAD'", (delivery_id,)).fetchone()
+        if not row: raise HTTPException(status_code=409, detail="Only a failed delivery can be retried")
+        destination = delivery_channels(settings).get(row["channel"])
+        if not destination or sha256(destination.encode()).hexdigest() != row["destination_hash"]:
+            raise HTTPException(status_code=409, detail="Destination changed; queued data will not be redirected")
+        db.execute("UPDATE deliveries SET status='PENDING',attempts=0,due=?,last_error=NULL WHERE id=?", (time.time(),delivery_id))
+    store.audit("monitoring.delivery_retry",actor.user_id,"delivery",delivery_id,{})
+    return {"status": "QUEUED", "id": delivery_id}
 
 
 @router.get("/monitoring/latest")

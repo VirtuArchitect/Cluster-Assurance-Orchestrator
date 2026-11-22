@@ -5,7 +5,7 @@ import ts from "typescript";
 
 const source = readFileSync(new URL("../src/operational.ts", import.meta.url), "utf8");
 const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } }).outputText;
-const { operatorQueue, formatEvidenceAge, incompleteRecoveries, monitoringPosture, hasCollectionPermission, ageSeconds, groupAuthenticationFailures, groupedFindingObservations, collectionStatus, inventoryHealthStatus } = await import(`data:text/javascript;base64,${Buffer.from(js).toString("base64")}`);
+const { collectionEvidenceConfidence, connectionTestPosture, sourceTrafficLight, operatorQueue, formatEvidenceAge, incompleteRecoveries, monitoringPosture, hasCollectionPermission, ageSeconds, groupAuthenticationFailures, groupedFindingObservations, collectionStatus, inventoryHealthStatus } = await import(`data:text/javascript;base64,${Buffer.from(js).toString("base64")}`);
 const collector = (domain, code = 401, alias = "pc") => ({ source: "prism_central", endpoint_alias: alias, domain, status_code: code, status: code === 200 ? "HEALTHY" : "UNKNOWN" });
 
 test("authentication failures group by endpoint and code; raw results stay intact", () => {
@@ -146,4 +146,38 @@ test("missing microservices diagnostics remain a recovery follow-up, never a con
   assert.equal(row.confirmed, false);
   data.incidents[0].resolved = true;
   assert.equal(operatorQueue(data, now).length, 0);
+});
+
+
+test("traffic light counts sources rather than alerts and requires fresh complete evidence", () => {
+  const data = report();
+  const counts = report => Object.fromEntries(sourceTrafficLight(report, now).map(segment => [segment.key, segment.count]));
+  assert.deepEqual(counts(null), { critical: 0, warning: 0, clear: 0, unknown: 2 });
+  assert.equal(counts(data).clear, 2);
+  data.incidents = [incident("prism-central", "CRITICAL"), incident("prism-central", "CRITICAL"), incident("prism-element", "WARNING")];
+  assert.deepEqual(counts(data), { critical: 1, warning: 1, clear: 0, unknown: 0 });
+  data.collectors[0].complete = false;
+  assert.deepEqual(counts(data), { critical: 0, warning: 1, clear: 0, unknown: 1 });
+  assert.equal(counts({ ...data, generated_at: "2020-01-01" }).unknown, 2);
+  assert.equal(counts({ ...data, generated_at: "2999-01-01" }).unknown, 2);
+  data.incidents = [incident("prism-element", "UNKNOWN")];
+  assert.equal(counts(data).unknown, 2);
+});
+
+
+test("inventory confidence cannot pass missing age, stale evidence, failed collectors or TLS bypass", () => {
+  const base = { available: true, demo: false, failureCount: 0, age: 10, tls: "strict" };
+  assert.equal(collectionEvidenceConfidence(base).status, "HEALTHY");
+  for (const age of [null, -1, NaN, Infinity]) assert.equal(collectionEvidenceConfidence({ ...base, age }).status, "UNKNOWN");
+  for (const extra of [{ age: 86400 }, { tls: "insecure_skip_verify" }, { failureCount: 1 }]) assert.equal(collectionEvidenceConfidence({ ...base, ...extra }).status, "WARNING");
+  assert.equal(collectionEvidenceConfidence({ ...base, available: false }).status, "UNKNOWN");
+  assert.equal(collectionEvidenceConfidence({ ...base, demo: true }).status, "UNKNOWN");
+  assert.match(collectionEvidenceConfidence(base).detail, /health.*unverified/);
+});
+
+test("one passed connection test cannot make a partial connection set pass", () => {
+  assert.equal(connectionTestPosture([]), "UNKNOWN");
+  assert.equal(connectionTestPosture(["READY", "READY"]), "HEALTHY");
+  assert.equal(connectionTestPosture(["READY", "UNREACHABLE"]), "WARNING");
+  assert.equal(connectionTestPosture(["READY", "AUTH_FAILED"]), "WARNING");
 });

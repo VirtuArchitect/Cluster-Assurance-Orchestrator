@@ -1,6 +1,9 @@
 """Read-only Prism incident collection. Source resolution is never inferred from absence."""
 from __future__ import annotations
 
+from app.version import build_identity
+from app.services.process_lock import FileLock
+
 from datetime import UTC, datetime
 from hashlib import sha256
 import json
@@ -35,6 +38,10 @@ def collect_monitoring(settings: Settings) -> dict:
     adapter.assert_live_calls_allowed()
     if not COLLECTION_LOCK.acquire(blocking=False):
         raise RuntimeError("A monitoring collection is already running")
+    process_lock = FileLock(Path(settings.evidence_dir) / 'prism-collection.lock')
+    if not process_lock.acquire():
+        COLLECTION_LOCK.release()
+        raise RuntimeError("Another process is collecting Prism evidence")
     try:
         previous = latest_monitoring(settings.evidence_dir)
         run_id = str(uuid4())
@@ -101,7 +108,7 @@ def collect_monitoring(settings: Settings) -> dict:
             "unavailable": sum(item["availability"] != "CURRENT" for item in incidents),
         }
         result = {
-            "available": True, "run_id": run_id, "generated_at": now,
+            "available": True, "build": build_identity(), "run_id": run_id, "generated_at": now,
             "completed_at": datetime.now(UTC).isoformat(), "read_only": True,
             "tls_mode": settings.tls_mode, "ncc_enabled": False, "ssh_enabled": False,
             "scope": "Prism alerts/events and targeted read-only PC deployment/PE prerequisite diagnostics; not a complete infrastructure-health evaluation",
@@ -116,6 +123,7 @@ def collect_monitoring(settings: Settings) -> dict:
         temporary.replace(root / name)
         return result
     finally:
+        process_lock.release()
         COLLECTION_LOCK.release()
 
 

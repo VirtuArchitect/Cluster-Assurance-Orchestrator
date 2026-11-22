@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
 import type { MonitoringReport } from "./monitoring";
+import { SourcePostureChart } from "./sourcePostureChart";
 import type { InventoryRun } from "./main";
 import { monitoringPosture, ageSeconds, incompleteRecoveries, operatorQueue, formatEvidenceAge } from "./operational";
 import { ArrowRight, ArrowUpRight, Clock3, Layers, RefreshCw, Search, Server, ShieldAlert, ShieldCheck } from "lucide-react";
+const STATIC_DEMO = import.meta.env.VITE_STATIC_DEMO === "true";
 const API = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8000";
 const sources = [{ id: "prism-element", name: "Prism Element", role: "PE · Cluster operations" }, { id: "prism-central", name: "Prism Central", role: "PC · Management plane" }];
 const ageLabel = formatEvidenceAge;
@@ -16,17 +18,17 @@ export function OperatorDashboard(props: {
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
-  const [auto, setAuto] = useState(false);
+  const [auto, setAuto] = useState(!STATIC_DEMO);
   useEffect(() => {
-    if (!auto || !props.canCollect) return;
-    const timer = window.setInterval(() => void refresh(), 60_000);
+    if (!auto || STATIC_DEMO) return;
+    const timer = window.setInterval(() => void refresh(false), 30_000);
     return () => window.clearInterval(timer);
   }, [auto, props.canCollect, props.authToken]);
-  async function refresh() {
+  async function refresh(collect = true) {
     if (busyRef.current) return;
     busyRef.current = true; setBusy(true); setError(null);
     try {
-      const response = await fetch(`${API}/api/v1/monitoring/collect`, { method: "POST", headers: { Authorization: `Bearer ${props.authToken}` } });
+      const response = await fetch(`${API}/api/v1/monitoring/${collect ? "collect" : "latest"}`, { method: collect ? "POST" : "GET", headers: { Authorization: `Bearer ${props.authToken}` } });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
         throw new Error(typeof payload.detail === "string" ? payload.detail : `Collection failed (HTTP ${response.status})`);
@@ -50,9 +52,9 @@ export function OperatorDashboard(props: {
   const headline = !posture.verified ? "Current estate status unconfirmed" : posture.critical ? "Critical alerts require attention" : confirmedRecoveries ? "Recovery actions remain open" : posture.warning ? "Warnings require investigation" : posture.label;
   const observations = (props.report?.incidents ?? []).filter(item => !item.resolved);
   const metrics = [
-    { label: "Critical alerts", value: observations.filter(item => item.severity === "CRITICAL").length, tone: "critical", filter: "CRITICAL" },
-    { label: "Warning alerts", value: observations.filter(item => item.severity === "WARNING").length, tone: "warning", filter: "WARNING" },
-    { label: "Open observations", value: observations.length, tone: "neutral", filter: "all" },
+    { label: "Critical alerts", value: posture.verified ? posture.critical : observations.filter(item => item.severity === "CRITICAL").length, tone: "critical", filter: "CRITICAL" },
+    { label: "Warning alerts", value: posture.verified ? posture.warning : observations.filter(item => item.severity === "WARNING").length, tone: "warning", filter: "WARNING" },
+    { label: "Open observations", value: posture.verified ? posture.incidents.length : observations.length, tone: "neutral", filter: "all" },
     { label: "Recovery follow-ups", value: queue.filter(row => row.recovery).length, tone: "warning", filter: "recovery" }
   ];
   return <div className="operator-dashboard enterprise-ops">
@@ -60,7 +62,7 @@ export function OperatorDashboard(props: {
       <div><span className="ops-kicker">Operations overview</span><p>PE cluster operations &amp; PC management plane</p></div>
       <div className="ops-command-actions">
         <span className="ops-timestamp"><Clock3 size={14} /> {ageLabel(posture.age)}<small>Last monitoring collection</small></span>
-        <label className="watch-auto"><input type="checkbox" checked={auto} disabled={!props.canCollect} onChange={event => setAuto(event.target.checked)} /> Auto-refresh · 60s</label>
+        <label className="watch-auto"><input type="checkbox" checked={auto} disabled={STATIC_DEMO} onChange={event => setAuto(event.target.checked)} /> Refresh saved evidence / 30s</label>
         <button className="primary-button" disabled={busy || !props.canCollect} onClick={() => void refresh()}><RefreshCw size={15} className={busy ? "ops-spin" : ""} /> {busy ? "Collecting…" : "Refresh PE & PC monitoring"}</button>
       </div>
     </section>
@@ -111,6 +113,7 @@ export function OperatorDashboard(props: {
       </section>
       <aside className="ops-evidence" aria-label="Evidence and monitoring scope">
         <h2>Monitoring confidence</h2>
+        <SourcePostureChart report={props.report} />
         <dl><div><dt>Feed coverage</dt><dd>{feedCount}/4 collected <span className={`ops-pill ${posture.verified ? "ops-fresh" : "ops-unknown"}`}>{posture.verified ? "Current" : "Unconfirmed"}</span></dd></div><div><dt>Last collection</dt><dd>{ageLabel(posture.age)}<small>{props.report?.generated_at ? new Date(props.report.generated_at).toLocaleString() : "No timestamp available"}</small></dd></div><div><dt>Connection trust</dt><dd>{props.report?.available ? props.report.tls_mode === "strict" ? "TLS verified" : "TLS unverified · lab only" : "Not evaluated"}</dd></div></dl>
         <h3>Inventory evidence</h3><p>{props.run ? `${props.run.collectors.length - inventoryIssues.length}/${props.run.collectors.length} probes succeeded · ${ageLabel(inventoryAge)}` : "Not collected"}</p><button className="text-button" onClick={inventoryIssues.length ? props.onDiagnostics : props.onInventory}>Review collection <ArrowUpRight size={14} /></button>
         <div className="ops-scope-note"><ShieldCheck size={16} /><p>Read-only monitoring. Alert posture and collection success do not establish infrastructure health or recovery.</p></div>

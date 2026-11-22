@@ -1,0 +1,78 @@
+{
+  "version": "0.2.0-rc.1",
+  "source_sha256": "e66b7c0f48c0966a8a254a1911c0ac38c45e433a99668d824e42d59fb84b9531",
+  "assets": [
+    {
+      "file": "quick-start.mp4",
+      "sha256": "9c9eb034f2491aa357971063fdba245c36f61a517ddaee73d09d5d66a0927a5e",
+      "classification": "generated-synthetic-training",
+      "duration_seconds": 40.0
+    },
+    {
+      "file": "quick-start.vtt",
+      "sha256": "640b060d84771cc1aac1a533467329b6c5c56768e21bb13d624317607133f846",
+      "classification": "generated-synthetic-training",
+      "duration_seconds": 40.0
+    },
+    {
+      "file": "operator-guide.mp4",
+      "sha256": "4a1772752f81c2c5a5e475616e534e40c96c04a7cc8985ebc1bb36ab6689fcc6",
+      "classification": "generated-synthetic-training",
+      "duration_seconds": 40.0
+    },
+    {
+      "file": "operator-guide.vtt",
+      "sha256": "015015911927f4e57e8b0ccf22d8dcc0edfba486c8ec1289416c52ad9968d75a",
+      "classification": "generated-synthetic-training",
+      "duration_seconds": 40.0
+    },
+    {
+      "file": "incident-triage.mp4",
+      "sha256": "8783f69e66c099f92d675d280fe896bad6a711ae45b005ae4b184c6311e6b5f4",
+      "classification": "generated-synthetic-training",
+      "duration_seconds": 40.0
+    },
+    {
+      "file": "incident-triage.vtt",
+      "sha256": "5bd6615459ac111f33a13f65ff0e85956b0e8d4a332c0aeb32a1fff9ec8112f6",
+      "classification": "generated-synthetic-training",
+      "duration_seconds": 40.0
+    },
+    {
+      "file": "administrator-guide.mp4",
+      "sha256": "3ce0e659ffeb3dd84dba318916509be7216584a0129e0b6b5f8db2d8dbd81223",
+      "classification": "generated-synthetic-training",
+      "duration_seconds": 40.0
+    },
+    {
+      "file": "administrator-guide.vtt",
+      "sha256": "96521cbebff9455ae57b85f6a914bc976d56938e09dfc7008b519c3395c8a71c",
+      "classification": "generated-synthetic-training",
+      "duration_seconds": 40.0
+    },
+    {
+      "file": "release-validation.mp4",
+      "sha256": "3625d9f293f6b3bdeb92b04d83ee03a618ad4ddcf3c892442315284213ff285b",
+      "classification": "generated-synthetic-training",
+      "duration_seconds": 40.0
+    },
+    {
+      "file": "release-validation.vtt",
+      "sha256": "b61c389362ba4219d9319e6460c3ca21c6e48f12048b981608659d2185e556e4",
+      "classification": "generated-synthetic-training",
+      "duration_seconds": 40.0
+    },
+    {
+      "file": "tutorials.mp4",
+      "sha256": "538a69a2641a46f7eb5322ae7430f0b32371f7bbc130748bb13b6a837646ed5e",
+      "classification": "generated-synthetic-training",
+      "duration_seconds": 40.0
+    },
+    {
+      "file": "tutorials.vtt",
+      "sha256": "9a577f2e0b1395f908dfc96ded53c0017ed7b6559c7b6190b482ca0afc33906a",
+      "classification": "generated-synthetic-training",
+      "duration_seconds": 40.0
+    }
+  ]
+}

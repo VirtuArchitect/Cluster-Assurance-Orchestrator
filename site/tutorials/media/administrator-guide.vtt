@@ -1,0 +1,17 @@
+WEBVTT
+
+00:00:00.000 --> 00:00:10.000
+1. Access and secrets
+Synthetic training. Use unique local accounts and the least-privilege role that supports the test.
+
+00:00:10.000 --> 00:00:20.000
+2. Persistence and backups
+Synthetic training. Docker/appliance deployments use PostgreSQL for administration and named volumes for persistent evidence.
+
+00:00:20.000 --> 00:00:30.000
+3. Retention and restoration
+Synthetic training. Review configured audit, execution and evidence retention plus minimum retained runs.
+
+00:00:30.000 --> 00:00:40.000
+4. Evidence sharing and escalation
+Synthetic training. Operational outputs may expose hostnames, addresses, UUIDs, user names, task text and topology even when passwords are hidden.

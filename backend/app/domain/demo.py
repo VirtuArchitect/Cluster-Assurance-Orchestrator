@@ -1,4 +1,5 @@
 from uuid import uuid4
+from app.version import VERSION
 
 from pydantic import BaseModel
 
@@ -43,7 +44,7 @@ def build_demo_run(settings: Settings) -> DemoRun:
     ]
     status = clusters[0].status
     manifest = EvidenceManifest(
-        product_version="0.1.0",
+        product_version=VERSION,
         profile_version="demo-foundation",
         run_id=run_id,
         result_summary={"estateStatus": status, "clusterCount": len(clusters)},

@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from app.version import build_identity
 from app.core.config import Settings
 from app.services.artifacts import public_artifact_ref
 
@@ -12,6 +13,7 @@ from app.services.artifacts import public_artifact_ref
 def build_support_status(settings: Settings, api_url: str) -> dict[str, Any]:
     latest = latest_run_summary(settings.evidence_dir)
     return {
+        "build": build_identity(),
         "mode": {
             "environment": settings.environment,
             "demo_mode": settings.demo_mode,
@@ -73,6 +75,8 @@ def latest_run_summary(evidence_dir: str | Path) -> dict[str, Any]:
         "tls_mode": payload.get("tls_mode", "unknown"),
         "age_seconds": int((datetime.now(UTC) - parsed_generated_at).total_seconds()) if parsed_generated_at else None,
         "path": public_artifact_ref(path),
+        "collector_count": len(payload.get("collectors", [])),
+        "collector_failure_count": len(collector_failures),
         "collector_failures": collector_failures,
     }
 

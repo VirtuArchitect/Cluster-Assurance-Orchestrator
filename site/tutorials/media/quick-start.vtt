@@ -1,0 +1,17 @@
+WEBVTT
+
+00:00:00.000 --> 00:00:10.000
+1. Establish the test boundary
+Synthetic training. Nominate a test lead, incident owner and rollback approver.
+
+00:00:10.000 --> 00:00:20.000
+2. Prepare the appliance
+Synthetic training. Follow the appliance runbook and configure unique secrets through the deployment environment, never in chat or documentation.
+
+00:00:20.000 --> 00:00:30.000
+3. Connect and collect
+Synthetic training. Open Settings > Connections.
+
+00:00:30.000 --> 00:00:40.000
+4. Record the acceptance result
+Synthetic training. Check Settings > About.

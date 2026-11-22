@@ -1,6 +1,36 @@
 import type { Collector, InventoryRun, HealthStatus, Observation } from "./main";
 import type { MonitoringReport } from "./monitoring";
 
+export function collectionEvidenceConfidence(input: { available: boolean; demo: boolean; failureCount: number; age: number | null; tls: string | null }) : { status: HealthStatus; label: string; detail: string } {
+  if (!input.available) return { status: "UNKNOWN", label: "No evidence", detail: "Collect inventory to create saved evidence." };
+  if (input.demo) return { status: "UNKNOWN", label: "Synthetic", detail: "Demo evidence only; Prism was not contacted." };
+  if (input.failureCount) return { status: "WARNING", label: "Partial", detail: `${input.failureCount} collector(s) failed.` };
+  if (input.age == null || input.age < 0 || !Number.isFinite(input.age)) return { status: "UNKNOWN", label: "Age unverified", detail: "A valid collection timestamp is required before trusting freshness." };
+  if (input.age >= 86400) return { status: "WARNING", label: "Stale", detail: "Saved inventory evidence is at least 24 hours old." };
+  if (input.tls !== "strict") return { status: "WARNING", label: "TLS unverified", detail: "Strict TLS was not recorded for this collection." };
+  return { status: "HEALTHY", label: "Collection verified", detail: "Fresh, complete collection with recorded strict TLS; infrastructure health and production readiness remain unverified." };
+}
+
+export function connectionTestPosture(statuses: string[]): HealthStatus {
+  if (!statuses.length) return "UNKNOWN";
+  return statuses.every(status => status === "READY") ? "HEALTHY" : "WARNING";
+}
+
+export function sourceTrafficLight(report: MonitoringReport | null, now = Date.now()) {
+  const segments = [
+    { key: "critical", label: "Critical alerts", count: 0 },
+    { key: "warning", label: "Warning alerts", count: 0 },
+    { key: "clear", label: "No critical / warning alerts", count: 0 },
+    { key: "unknown", label: "Unknown / stale", count: 0 }
+  ];
+  for (const source of ["prism-element", "prism-central"]) {
+    const state = monitoringPosture(report, source, now);
+    const key = !state.verified || state.tone === "unknown" ? "unknown" : state.critical ? "critical" : state.warning ? "warning" : "clear";
+    segments.find(segment => segment.key === key)!.count++;
+  }
+  return segments;
+}
+
 export function operatorQueue(report: MonitoringReport | null, now = Date.now()) {
   const recoveries = incompleteRecoveries(report, now);
   const recoveryIds = new Set(recoveries.map(item => item.incident.id));

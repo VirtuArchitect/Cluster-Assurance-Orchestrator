@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Appliance version, for example 0.1.0. Leave blank to use the current ref name or pyproject version."
+        description: "Appliance version, for example 0.2.0-rc.1. Must match release.json."
         required: false
         type: string
       include_docker_image:
@@ -13,7 +13,7 @@ on:
         default: true
         type: boolean
       create_release:
-        description: "Create or update a GitHub Release and attach the appliance artifacts."
+        description: "Create an immutable prerelease and attach the appliance artifacts."
         required: true
         default: false
         type: boolean
@@ -34,16 +34,15 @@ jobs:
       - name: Resolve appliance version
         id: version
         shell: pwsh
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
         run: |
-          $version = "${{ inputs.version }}"
+          $version = $env:REQUESTED_VERSION
           if ([string]::IsNullOrWhiteSpace($version) -and $env:GITHUB_REF_NAME -match '^v(.+)$') {
               $version = $Matches[1]
           }
           if ([string]::IsNullOrWhiteSpace($version)) {
-              $pyproject = Get-Content -LiteralPath "pyproject.toml" -Raw
-              if ($pyproject -match '(?m)^version\s*=\s*"([^"]+)"') {
-                  $version = $Matches[1]
-              }
+              $version = (Get-Content "backend/app/release.json" -Raw | ConvertFrom-Json).version
           }
           if ([string]::IsNullOrWhiteSpace($version)) {
               throw "Unable to resolve appliance version."
@@ -92,15 +91,12 @@ jobs:
           "@
           gh release view $tag 2>$null
           if ($LASTEXITCODE -ne 0) {
-              gh release create $tag `
+              gh release create $tag --prerelease `
                 --title $title `
                 --notes $notes `
                 "dist-appliance/cluster-assurance-orchestrator-${{ steps.version.outputs.version }}-appliance.zip" `
                 "dist-appliance/cluster-assurance-orchestrator-${{ steps.version.outputs.version }}-appliance.zip.sha256"
           }
           else {
-              gh release upload $tag `
-                "dist-appliance/cluster-assurance-orchestrator-${{ steps.version.outputs.version }}-appliance.zip" `
-                "dist-appliance/cluster-assurance-orchestrator-${{ steps.version.outputs.version }}-appliance.zip.sha256" `
-                --clobber
+              throw "Release already exists; publish a new immutable version."
           }

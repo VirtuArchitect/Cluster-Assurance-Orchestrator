@@ -1,39 +1,37 @@
-# Cluster Assurance Orchestrator for Nutanix Environments - v0.1.0
+# Cluster Assurance Orchestrator for Nutanix Environments - v0.2.0-rc.1
 
 Independent operational health assurance for Nutanix environments.
 
-[Live Demo](https://virtuarchitect.github.io/Cluster-Assurance-Orchestrator/) | [Appliance Runbook](docs/appliance.md) | [GitHub Publication Guide](docs/github-publication.md)
+[Project site](https://virtuarchitect.github.io/Cluster-Assurance-Orchestrator/) | [Synthetic demo](https://virtuarchitect.github.io/Cluster-Assurance-Orchestrator/demo/) | [Tutorials](https://virtuarchitect.github.io/Cluster-Assurance-Orchestrator/tutorials/) | [PDF library](https://virtuarchitect.github.io/Cluster-Assurance-Orchestrator/documentation/)
 
-Cluster Assurance Orchestrator is a read-only support console for validating Prism connectivity, collecting cluster evidence, tracking readiness gates, and giving operations teams a clear view of Nutanix estate health before production assurance claims are made.
+**Production-test candidate, not production approved.** These resource routes are prepared by the Pages workflow and become live only after publication. Public content uses synthetic examples; no runtime PE/PC exports or lab screenshots are included in the site.
 
-This project is independent and is not affiliated with, endorsed by, or supported by Nutanix, Inc. Nutanix, AHV, AOS, NCC, Prism Central and Prism Element are trademarks or registered trademarks of Nutanix, Inc. in the United States and other countries.
+The console separates Prism alert posture, collection confidence and recovery follow-ups. Successful collection and source alert resolution do not establish complete infrastructure health or recovery.
 
-## Live Demo
+This independent project is not affiliated with, endorsed by or supported by Nutanix. Product names are trademarks of their owners.
 
-Open the public static dashboard demo on GitHub Pages:
+## Unattended monitoring
 
-[https://virtuarchitect.github.io/Cluster-Assurance-Orchestrator/](https://virtuarchitect.github.io/Cluster-Assurance-Orchestrator/)
+Compose includes a separate read-only collector and durable notification sender. Review [unattended monitoring and delivery](docs/unattended-monitoring.md) before enabling approved webhook/SMTP destinations. Worker availability is not estate health; an independent monitor must watch the appliance readiness endpoint. External notifications remain disabled by default.
 
-<img width="1852" height="1224" alt="image" src="https://github.com/user-attachments/assets/8a920f0a-b6c6-412c-9deb-d6b35babc8e5" />
+## Release identity and testing
 
+The canonical release is [backend/app/release.json](backend/app/release.json). UI, API, package metadata and new collection evidence use this identity. Settings > About and `/api/v1/health` expose build revision, time and source state. A dirty or unknown build is local validation only. Historical evidence retains its own version, or explicitly reports an unknown legacy version.
 
-The GitHub Pages demo is a static read-only preview with built-in sample data. It lets users explore the dashboard, triage, schedules, evidence and settings experience without requiring access to a Nutanix lab, FastAPI backend or PostgreSQL database. Use the Docker or appliance deployment when you need live Prism collection and persisted settings.
+Read the [release validation checklist](docs/guides/release-validation.md) before controlled production testing. Immutable bundles require a clean checkout, matching version and unique output path. Preserve image identity, ZIP and image-tar hashes, test results and a separate acceptance decision.
 
-## Screenshots
+## Documentation and tutorials
 
-### Operator Dashboard
+- [Controlled production-test quick start](docs/guides/quick-start.md)
+- [Operations console user guide](docs/guides/operator-guide.md)
+- [Prism incident and recovery runbook](docs/guides/incident-triage.md)
+- [Administrator and data protection guide](docs/guides/administrator-guide.md)
+- [Release, validation and rollback checklist](docs/guides/release-validation.md)
+- [Tutorial workbook with six exercises](docs/guides/tutorials.md)
 
-<img width="1852" height="1224" alt="image" src="https://github.com/user-attachments/assets/c103a14c-e3a5-4127-ac0b-0baeaf82f985" />
+The searchable PDF library is in `site/documentation/`; guided, accessible tutorial steps and transcripts are in `site/tutorials/`. Tutorials include six silent captioned video overviews and written procedures, all generated synthetic training rather than live recordings. Generate PDFs with the authoring-only ReportLab tool using `python scripts/build-documentation.py`; no application runtime dependency is added. Validate with `python scripts/check-publication.py --site site` (authoring-only pypdf).
 
-
-### PostgreSQL Storage And Backups
-
-<img width="1853" height="1224" alt="image" src="https://github.com/user-attachments/assets/573ae4b2-7738-453d-9a2c-e6246ef07c91" />
-
-
-### Login Experience
-
-![Cluster Assurance login screen](docs/assets/cao-login.png)
+The Pages build places the static console at `/demo/` and the resource homepage at `/`. The demo uses built-in fictional records, cannot collect from Prism, and is separate from a deployed appliance. Existing lab screenshots are not used by the public site or new guides.
 
 ## At A Glance
 
@@ -78,7 +76,7 @@ React console  --->  FastAPI API  --->  PostgreSQL settings DB
 | Path | Use When | Command |
 | --- | --- | --- |
 | Docker Compose | You want the normal local or small-team deployment with PostgreSQL | `docker compose up -d --build` |
-| Appliance bundle | You need a transferable ZIP with Compose files, env template, runbook and checksum | `.\scripts\build-appliance.ps1 -Version 0.1.0` |
+| Appliance bundle | You need a transferable ZIP with Compose files, env template, runbook and checksum | `.\scripts\build-appliance.ps1 -Version 0.2.0-rc.1` |
 | GitHub appliance workflow | You want GitHub to build and publish the appliance ZIP as an artifact or release asset | **Actions > Appliance Bundle** |
 | Local development | You are changing backend or frontend code | Run FastAPI and Vite separately |
 | Lab validation | You need to inspect live Prism response shapes before trusting collectors | `python -m app.cli.inspect_evidence_schema` |
@@ -187,7 +185,7 @@ Use `CAO_TLS_MODE=insecure_skip_verify` only for lab certificates that cannot ye
 Create a downloadable appliance-style ZIP:
 
 ```powershell
-.\scripts\build-appliance.ps1 -Version 0.1.0
+.\scripts\build-appliance.ps1 -Version 0.2.0-rc.1
 ```
 
 The bundle is written under `dist-appliance/` and includes:

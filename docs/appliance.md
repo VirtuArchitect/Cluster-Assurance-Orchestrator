@@ -17,7 +17,7 @@ It is not an official Nutanix product and does not make production-readiness cla
 From a development machine with Docker:
 
 ```powershell
-.\scripts\build-appliance.ps1 -Version 0.1.0
+.\scripts\build-appliance.ps1 -Version 0.2.0-rc.1
 ```
 
 The script writes:
@@ -66,7 +66,7 @@ For disconnected environments:
 7. Load the image if the tar is present:
 
 ```powershell
-docker load -i .\cluster-assurance-orchestrator-0.1.0-image.tar
+docker load -i .\cluster-assurance-orchestrator-0.2.0-rc.1-image.tar
 ```
 
 8. Start with Docker Compose.
@@ -91,3 +91,7 @@ The appliance remains read-only against Prism by default:
 - `CAO_ENABLE_SSH=false`
 
 Do not enable mutating operations in this appliance profile without a separate design, UAT plan and rollback procedure.
+
+## Unattended monitoring
+
+Compose also starts `monitoring-worker` from the same image with the evidence volume and saved settings. It does not need an open browser. Review [worker configuration, delivery semantics and external readiness monitoring](unattended-monitoring.md). Outbound notification destinations remain unset and disabled by default.

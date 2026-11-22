@@ -1,0 +1,17 @@
+WEBVTT
+
+00:00:00.000 --> 00:00:10.000
+1. Establish what happened
+Synthetic training. Open Prism Incidents and collect fresh alerts and events.
+
+00:00:10.000 --> 00:00:20.000
+2. A200335: inspect deployment and prerequisites
+Synthetic training. For Microservices Infrastructure is not in healthy state, inspect the latest PC Microservice Infrastructure Deployment task and CMSP Prechecks child result.
+
+00:00:20.000 --> 00:00:30.000
+3. Plan correction and verify recurrence
+Synthetic training. Before any approved change, validate address ownership, subnet/routing, DNS, uniqueness, installed-release requirements, maintenance scope and rollback owner.
+
+00:00:30.000 --> 00:00:40.000
+4. CVM /home: inspect the correct filesystem
+Synthetic training. Identify the affected CVM and exact mount from the source alert.

@@ -23,6 +23,8 @@ services:
       context: .
       args:
         VITE_API_BASE: ""
+    environment:
+      CAO_MONITORING_ENABLED: "true"
     image: cluster-assurance-orchestrator:local
     container_name: cluster-assurance-orchestrator
     restart: unless-stopped
@@ -37,6 +39,32 @@ services:
         condition: service_healthy
     volumes:
       - cao-data:/data
+
+  monitoring-worker:
+    image: cluster-assurance-orchestrator:local
+    restart: unless-stopped
+    command: ["python", "-m", "app.worker"]
+    working_dir: /app/backend
+    env_file:
+      - path: ./config/appliance.env.example
+      - path: ./config/appliance.env
+        required: false
+    environment:
+      CAO_MONITORING_ENABLED: "true"
+      CAO_READ_ONLY_MODE: "true"
+      CAO_ENABLE_NCC: "false"
+      CAO_ENABLE_SSH: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - cao-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.worker", "--check"]
+      interval: 30s
+      timeout: 20s
+      start_period: 120s
+      retries: 3
 
 volumes:
   cao-data:

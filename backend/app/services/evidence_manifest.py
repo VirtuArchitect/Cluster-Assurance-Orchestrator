@@ -39,7 +39,7 @@ def latest_manifest(evidence_dir: str | Path) -> EvidenceManifest | None:
         )
 
     return EvidenceManifest(
-        product_version="0.1.0",
+        product_version=str((latest.get("build") or {}).get("version", "unknown (legacy evidence)")),
         profile_version="lab-inventory-v1",
         run_id=run_id,
         result_summary={

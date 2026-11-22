@@ -38,3 +38,7 @@ tmp/
 Thumbs.db
 .idea/
 .vscode/
+
+backend/app/build-info.json
+
+site/demo/

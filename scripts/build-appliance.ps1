@@ -46,9 +46,12 @@ $composeText = (Get-Content -LiteralPath (Join-RepoPath @("docker-compose.yml"))
 # Bundles run their exact saved image; they must not rebuild from missing source.
 $composeText = $composeText -replace '(?ms)    build:\r?\n      context: \.\r?\n      args:\r?\n        VITE_API_BASE: ""\r?\n', ''
 Set-Content -LiteralPath (Join-Path $stagingRoot "docker-compose.yml") -Value $composeText -Encoding utf8
+New-Item -ItemType Directory -Path (Join-Path $stagingRoot "config/trust") | Out-Null
+Copy-Item -LiteralPath (Join-RepoPath @("config", "trust", "README.md")) -Destination (Join-Path $stagingRoot "config/trust/README.md")
 Copy-Item -LiteralPath (Join-RepoPath @("config", "appliance.env.example")) -Destination (Join-Path (Join-Path $stagingRoot "config") "appliance.env.example")
 Copy-Item -LiteralPath (Join-RepoPath @("docs", "appliance.md")) -Destination (Join-Path (Join-Path $stagingRoot "docs") "appliance.md")
 Copy-Item -LiteralPath (Join-RepoPath @("README.md")) -Destination $stagingRoot
+Copy-Item -LiteralPath (Join-RepoPath @("docs", "prism-tls.md")) -Destination (Join-Path $stagingRoot "docs/prism-tls.md")
 Copy-Item -LiteralPath (Join-RepoPath @("docs", "unattended-monitoring.md")) -Destination (Join-Path $stagingRoot "docs/unattended-monitoring.md")
 
 $manifest = [ordered]@{

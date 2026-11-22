@@ -39,6 +39,7 @@ services:
         condition: service_healthy
     volumes:
       - cao-data:/data
+      - ./config/trust:/etc/cao-trust:ro
 
   monitoring-worker:
     image: cluster-assurance-orchestrator:local
@@ -59,6 +60,7 @@ services:
         condition: service_healthy
     volumes:
       - cao-data:/data
+      - ./config/trust:/etc/cao-trust:ro
     healthcheck:
       test: ["CMD", "python", "-m", "app.worker", "--check"]
       interval: 30s

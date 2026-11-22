@@ -17,6 +17,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from app.core.config import Settings
+from app.core.tls import prism_ssl_context
 from app.domain.scheduling import ScheduleDefinition
 from app.services.artifacts import public_artifact_ref
 from app.services.scheduling import default_profile
@@ -408,8 +409,7 @@ class AdminStore:
                 }
         if not configured:
             return self.settings
-        if "insecure_skip_verify" in tls_modes:
-            updates["tls_mode"] = "insecure_skip_verify"
+        updates["tls_mode"] = "insecure_skip_verify" if "insecure_skip_verify" in tls_modes else "strict"
         return replace(self.settings, demo_mode=False, read_only_mode=True, enable_ncc=False, enable_ssh=False, **updates)
 
     def upsert_connection(self, payload: dict[str, Any], actor: Principal, connection_id: str | None = None) -> dict[str, Any]:
@@ -480,7 +480,7 @@ class AdminStore:
             row = connection.execute("SELECT * FROM connections WHERE id = ?", (connection_id,)).fetchone()
             if row is None:
                 raise KeyError(connection_id)
-            status, details = probe_connection_row(row, self.settings.auth_secret)
+            status, details = probe_connection_row(row, self.settings.auth_secret, self.settings.custom_ca_bundle)
             connection.execute(
                 "UPDATE connections SET status = ?, last_checked_at = ?, updated_at = ? WHERE id = ?",
                 (status, utcnow_iso(), utcnow_iso(), connection_id),
@@ -907,7 +907,7 @@ def unseal_secret(sealed: str, key: str) -> str:
     return bytes(a ^ b for a, b in zip(ciphertext, stream, strict=True)).decode("utf-8")
 
 
-def probe_connection_row(row: sqlite3.Row, auth_secret: str) -> tuple[str, dict[str, Any]]:
+def probe_connection_row(row: sqlite3.Row, auth_secret: str, custom_ca_bundle: str = "") -> tuple[str, dict[str, Any]]:
     if row["type"] not in {"Prism Central", "Prism Element"}:
         return "UNSUPPORTED", {"reason": "Unsupported connection type"}
     if not row["url"] or not row["username"] or not row["secret_ciphertext"]:
@@ -926,7 +926,10 @@ def probe_connection_row(row: sqlite3.Row, auth_secret: str) -> tuple[str, dict[
     }
     if body is not None:
         headers["Content-Type"] = "application/json"
-    context = ssl._create_unverified_context() if row["tls_mode"] == "insecure_skip_verify" else ssl.create_default_context()
+    try:
+        context = prism_ssl_context(str(row["tls_mode"]), custom_ca_bundle)
+    except (OSError, ssl.SSLError, ValueError) as error:
+        return "TLS_FAILED", {"error": type(error).__name__, "reason": "TLS trust configuration could not be loaded"}
     started = perf_counter()
     request = Request(url, data=body, headers=headers, method=method)
     try:
@@ -954,6 +957,8 @@ def probe_connection_row(row: sqlite3.Row, auth_secret: str) -> tuple[str, dict[
 
 def connection_probe_request(row: sqlite3.Row) -> tuple[str, str, bytes | None]:
     base_url = str(row["url"]).rstrip("/") + "/"
+    if row["type"] == "Prism Element":
+        return "GET", base_url + "PrismGateway/services/rest/v2.0/cluster/", None
     body = json.dumps({"kind": "cluster", "length": 1, "offset": 0}).encode("utf-8")
     return "POST", base_url + "api/nutanix/v3/clusters/list", body
 

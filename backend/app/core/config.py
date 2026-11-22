@@ -52,6 +52,8 @@ class Settings:
     log_level: str = "INFO"
 
     def validate_safety(self) -> None:
+        if self.tls_mode not in {"strict", "insecure_skip_verify"}:
+            raise ValueError("Unsupported Prism TLS mode")
         if self.monitoring_interval_seconds < 30 or self.inventory_interval_seconds < 60:
             raise ValueError("Monitoring intervals must be at least 30s; inventory at least 60s")
         if self.monitoring_stale_seconds < self.monitoring_interval_seconds * 2:

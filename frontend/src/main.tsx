@@ -25,7 +25,6 @@ import {
   LockKeyhole,
   LogOut,
   ClipboardList,
-  Moon,
   Network,
   Plus,
   RefreshCw,
@@ -1140,14 +1139,13 @@ function App() {
           <div className="topbar-actions">
             {currentUser ? <span className="mode-badge">{currentUser.role_name}</span> : null}
             <button
-              className="theme-toggle"
+              className="icon-button theme-symbol"
               type="button"
               onClick={() => setTheme((currentTheme) => currentTheme === "light" ? "dark" : "light")}
               aria-label={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
               title={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
             >
-              {theme === "light" ? <Moon size={16} /> : <Sun size={16} />}
-              <span>{theme === "light" ? "Dark" : "Light"}</span>
+              <Sun size={16} strokeWidth={1.5} aria-hidden="true" />
             </button>
             <button className="icon-button" type="button" onClick={() => void loadConsoleData()} aria-label="Refresh latest evidence">
               <RefreshCw size={16} />

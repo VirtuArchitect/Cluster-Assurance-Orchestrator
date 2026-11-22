@@ -36,6 +36,7 @@ import {
   Users
 } from "lucide-react";
 import "./styles.css";
+import "./enterprise.css";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8000";
 const STATIC_DEMO = import.meta.env.VITE_STATIC_DEMO === "true";
@@ -877,6 +878,8 @@ function App() {
     return storedUser ? JSON.parse(storedUser) as AuthUser : null;
   });
   const [activePage, setActivePage] = useState<PageId>("dashboard");
+  const [navigationOpen, setNavigationOpen] = useState(false);
+  useEffect(() => { setNavigationOpen(false); }, [activePage]);
   const [theme, setTheme] = useState<ThemeMode>(() => {
     const storedTheme = window.localStorage.getItem("cao-theme");
     return storedTheme === "dark" ? "dark" : "light";
@@ -1089,7 +1092,8 @@ function App() {
             </div>
           </button>
         </div>
-        <nav>
+        <button className="mobile-nav-toggle" aria-expanded={navigationOpen} aria-controls="console-navigation" onClick={() => setNavigationOpen(value => !value)}>{navigationOpen ? "Close navigation" : "Open navigation"}</button>
+        <nav id="console-navigation" className={navigationOpen ? "navigation-open" : ""}>
           {navGroups.map((group) => (
             <div className="nav-group" key={group.label}>
               <div className="nav-group-label">{group.label}</div>
@@ -1103,6 +1107,7 @@ function App() {
                   return (
                     <button
                       aria-label={page.label}
+                      aria-current={activePage === page.id ? "page" : undefined}
                       title={page.label}
                       key={page.id}
                       className={activePage === page.id ? "active" : ""}
@@ -1126,7 +1131,7 @@ function App() {
       <section className="content">
         <header className="topbar">
           <div>
-            <p className="eyebrow">Cluster Assurance Orchestrator for Nutanix Environments</p>
+            <p className="eyebrow">Cluster Assurance / Operations console</p>
             <h1>{activeMeta.label}</h1>
           </div>
           <div className="topbar-actions">
@@ -1323,7 +1328,7 @@ function DashboardPage(props: {
       <div className="watch-evidence-bar">
         <div><h3>Schedule preview</h3><p>{nextRun ? formatDate(nextRun.occurrence_at) : "No scheduled occurrence"}</p><p>{nextRun?.reason ?? "No preview available"}</p><button className="secondary-button" onClick={() => props.onNavigate("schedules")}>Manage schedules</button></div>
         <div><h3>Production readiness</h3><p>{blocked == null ? "Readiness not evaluated" : `${blocked} gates incomplete`}</p><button className="secondary-button" onClick={() => props.onNavigate("settings")}>Review readiness</button></div>
-        <div><h3>Support diagnostics</h3><p>{props.support?.mode.environment ?? "Mode unknown"} · {props.support?.mode.tls_mode ?? "TLS mode unknown"}</p><button className="secondary-button" onClick={() => props.onNavigate("evidence")}>Open evidence</button></div>
+        <div><h3>Support diagnostics</h3><p>{props.support?.mode.environment ?? "Mode unknown"} Â· {props.support?.mode.tls_mode ?? "TLS mode unknown"}</p><button className="secondary-button" onClick={() => props.onNavigate("evidence")}>Open evidence</button></div>
       </div>
     </details>
   </>;

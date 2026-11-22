@@ -109,7 +109,7 @@ export function MonitoringPage(props: { authToken: string; initial: MonitoringRe
       </div>
       <small>PE and PC observations retain separate source identities. Matching affected entities and events provide context; counts are not deduplicated infrastructure incidents.</small>
     </section>
-    <section className="panel"><h2>Monitoring coverage and collection problems</h2>
+    <details className="panel ops-coverage" open={failedSources.length > 0}><summary>Collection coverage &amp; diagnostics <span>{failedSources.length ? `${failedSources.length} source(s) need attention` : "View feed status and source evidence"}</span></summary>
       {failedSources.map((name) => {
         const failures = report.collectors.filter((c) => c.source === name && !c.complete);
         const http = failures.map((c) => c.pages.at(-1)?.http_status);
@@ -119,7 +119,7 @@ export function MonitoringPage(props: { authToken: string; initial: MonitoringRe
       <div className="monitoring-table-wrap"><table className="monitoring-table"><thead><tr><th>Source / feed</th><th>Coverage</th><th>Records / pages</th><th>Evidence</th></tr></thead><tbody>
         {report.collectors.map((c) => <tr key={`${c.source_key}-${c.kind}`}><td>{c.source} / {c.kind}</td><td><Badge value={c.complete ? "COLLECTED" : "UNKNOWN"} /></td><td>{c.count} / {c.pages.length}</td><td><details><summary>Requests and artifact hashes</summary>{c.pages.map((p, n) => <EvidenceDetail key={n} evidence={p} />)}</details></td></tr>)}
       </tbody></table></div>
-    </section>
+    </details>
     {incident ? <IncidentDetail incident={incident} onBack={() => setSelected(null)} /> : <section className="panel"><h2>Incident queue</h2>
       <div className="toolbar monitoring-toolbar">
         <label>Search incidents<input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Symptom, alert ID, entity or cluster" /></label>
@@ -133,7 +133,7 @@ export function MonitoringPage(props: { authToken: string; initial: MonitoringRe
           <td>{item.affected_entities.map((e) => e.name).join(", ") || "Not reported"}<small>{item.source}</small></td><td>{date(item.last_occurrence_at || item.occurred_at)}<small>Observed {age(item.observed_at)} ago</small></td></tr>)}
       </tbody></table></div>{!filtered.length ? <p>No matching incidents in the saved evidence. Check source completeness and freshness before drawing conclusions.</p> : null}
     </section>}
-    <section className="panel"><h2>Prism events</h2><p>Events provide investigation context. Event proximity or shared entities do not prove root cause.</p><EventTable events={report.events} /></section>
+    <details className="panel ops-coverage"><summary>Prism events <span>{report.events.length} collected events · investigation context</span></summary><p>Event proximity or shared entities do not prove root cause.</p><EventTable events={report.events} /></details>
   </>;
 }
 

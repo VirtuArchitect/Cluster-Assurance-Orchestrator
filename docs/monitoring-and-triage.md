@@ -167,3 +167,20 @@ latest observation per source/cluster/check without inflating open-alert counts.
 Stale or incomplete evidence is labeled unconfirmed and requires refresh.
 
 A200335 incident comparisons match source, cluster, check and affected entity, selecting the nearest prior resolved alert before recurrence. Source resolution actor and automatic-resolution flag remain explicit; missing fields leave the method unverified. Previous source evidence is retained, while current deployment/prerequisite evidence is separately timestamped and does not prove point-in-time configuration or runtime causality.
+
+
+## Operations console presentation
+
+The dashboard separates evidence confidence from alert severity. Current source
+status requires fresh, complete alert/event feeds; saved counts are explicitly
+unconfirmed. PE and PC retain distinct identities, counts and source navigation.
+Compact metric buttons filter a searchable immediate-action table by severity,
+recovery status and source. A current alert with a recovery blocker occupies one
+row; a resolved alert with an incomplete recovery remains an actionable row without
+inflating Prism open-alert counts. Unconfirmed rows recommend a refresh instead of
+repeating historical task failures as current instructions.
+
+Collection diagnostics and events use disclosures so the incident queue and selected
+incident are easier to reach. Failed source diagnostics open automatically. Mobile
+navigation is collapsed by default and exposes its expanded state to assistive
+technology. No monitoring permission, TLS setting or infrastructure action is changed.

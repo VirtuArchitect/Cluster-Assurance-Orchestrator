@@ -21,3 +21,5 @@ reports
 site
 dist-appliance
 output
+
+config/trust

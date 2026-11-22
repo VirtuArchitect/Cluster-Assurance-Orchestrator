@@ -42,3 +42,7 @@ Thumbs.db
 backend/app/build-info.json
 
 site/demo/
+
+# Local trust anchors must never be published
+config/trust/*
+!config/trust/README.md

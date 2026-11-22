@@ -11,6 +11,7 @@ from urllib.parse import urljoin
 from urllib.request import Request, urlopen
 
 from app.core.config import Settings
+from app.core.tls import prism_ssl_context
 from app.domain.discovery import (
     EndpointDiscoveryResult,
     EndpointKind,
@@ -583,11 +584,7 @@ class NutanixReadOnlyAdapter:
             )
 
     def _ssl_context(self) -> ssl.SSLContext:
-        if self.settings.tls_mode == "insecure_skip_verify":
-            return ssl._create_unverified_context()
-        if self.settings.custom_ca_bundle:
-            return ssl.create_default_context(cafile=self.settings.custom_ca_bundle)
-        return ssl.create_default_context()
+        return prism_ssl_context(self.settings.tls_mode, self.settings.custom_ca_bundle)
 
     @staticmethod
     def _state_from_status(status_code: int) -> ProbeState:

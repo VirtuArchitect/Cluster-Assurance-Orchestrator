@@ -95,3 +95,7 @@ Do not enable mutating operations in this appliance profile without a separate d
 ## Unattended monitoring
 
 Compose also starts `monitoring-worker` from the same image with the evidence volume and saved settings. It does not need an open browser. Review [worker configuration, delivery semantics and external readiness monitoring](unattended-monitoring.md). Outbound notification destinations remain unset and disabled by default.
+
+## Verified private-CA Prism TLS
+
+Use the shared read-only trust mount described in [Prism TLS configuration](prism-tls.md) and [local trust directory](../config/trust/README.md). Never include deployment-specific CA material or keys in the image, source commit or appliance bundle. Connection tests and collectors use the same strict chain and hostname/IP verification.

@@ -17,6 +17,8 @@
 .topbar-actions { gap:7px; }
 .mode-badge { border-radius:4px; font-size:11px; }
 .primary-button,.secondary-button,.theme-toggle,.icon-button { border-radius:5px; }
+.icon-button.theme-symbol { border-color:transparent; background:transparent; }
+.icon-button.theme-symbol:hover { background:var(--surface-soft); }
 .panel { border-radius:7px; }
 .mobile-nav-toggle { display:none; }
 .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }

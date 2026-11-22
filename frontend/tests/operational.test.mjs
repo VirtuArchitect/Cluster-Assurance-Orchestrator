@@ -5,7 +5,7 @@ import ts from "typescript";
 
 const source = readFileSync(new URL("../src/operational.ts", import.meta.url), "utf8");
 const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } }).outputText;
-const { incompleteRecoveries, monitoringPosture, hasCollectionPermission, ageSeconds, groupAuthenticationFailures, groupedFindingObservations, collectionStatus, inventoryHealthStatus } = await import(`data:text/javascript;base64,${Buffer.from(js).toString("base64")}`);
+const { operatorQueue, formatEvidenceAge, incompleteRecoveries, monitoringPosture, hasCollectionPermission, ageSeconds, groupAuthenticationFailures, groupedFindingObservations, collectionStatus, inventoryHealthStatus } = await import(`data:text/javascript;base64,${Buffer.from(js).toString("base64")}`);
 const collector = (domain, code = 401, alias = "pc") => ({ source: "prism_central", endpoint_alias: alias, domain, status_code: code, status: code === 200 ? "HEALTHY" : "UNKNOWN" });
 
 test("authentication failures group by endpoint and code; raw results stay intact", () => {
@@ -114,4 +114,36 @@ test("recovery actions select latest observation without changing resolved alert
   assert.equal(incompleteRecoveries(data, now)[0].confirmed, false);
   data.incidents = [recovery, { ...recovery, last_occurrence_at: "2026-10-18T09:30:00Z", deployment_diagnostics: { status: "NO_CONFIRMED_BLOCKER" } }];
   assert.equal(incompleteRecoveries(data, now).length, 0);
+});
+
+
+test("operator queue merges alert and recovery action, preserves resolved recovery and source freshness", () => {
+  const data = report();
+  const pc = incident("prism-central", "CRITICAL", { id: "pc", source_key: "pc", cluster_id: "c", check_id: "200335", triage: { category: "Prism Central microservices infrastructure" }, deployment_diagnostics: { status: "BLOCKED", observed_at: data.generated_at } });
+  const pe = incident("prism-element", "WARNING", { id: "pe" });
+  data.incidents = [pc, pe];
+  assert.equal(operatorQueue(data, now).length, 2);
+  assert.equal(operatorQueue(data, now)[0].recovery, true);
+  assert.equal(operatorQueue(data, now)[0].confirmed, true);
+  pc.resolved = true;
+  assert.equal(operatorQueue(data, now).length, 2);
+  assert.equal(monitoringPosture(data, undefined, now).critical, 0);
+  data.collectors[0].complete = false;
+  assert.equal(operatorQueue(data, now)[0].confirmed, false);
+  assert.equal(operatorQueue(data, now)[1].confirmed, true);
+  assert.equal(operatorQueue({ ...data, generated_at: "2020-01-01" }, now).every(row => !row.confirmed), true);
+  assert.equal(operatorQueue(null, now).length, 0);
+  assert.equal(formatEvidenceAge(740 * 3600), "30d ago");
+  assert.equal(formatEvidenceAge(null), "Time unknown");
+});
+
+
+test("missing microservices diagnostics remain a recovery follow-up, never a confirmed blocker", () => {
+  const data = report();
+  data.incidents = [incident("prism-central", "CRITICAL", { id: "pc", triage: { category: "Prism Central microservices infrastructure" } })];
+  const [row] = operatorQueue(data, now);
+  assert.equal(row.recovery, true);
+  assert.equal(row.confirmed, false);
+  data.incidents[0].resolved = true;
+  assert.equal(operatorQueue(data, now).length, 0);
 });

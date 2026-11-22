@@ -1,6 +1,20 @@
 import type { Collector, InventoryRun, HealthStatus, Observation } from "./main";
 import type { MonitoringReport } from "./monitoring";
 
+export function operatorQueue(report: MonitoringReport | null, now = Date.now()) {
+  const recoveries = incompleteRecoveries(report, now);
+  const recoveryIds = new Set(recoveries.map(item => item.incident.id));
+  const open = (report?.incidents ?? []).filter(item => !item.resolved && !recoveryIds.has(item.id));
+  const rows = [...recoveries.map(item => ({ incident: item.incident, recovery: true, confirmed: item.confirmed })),
+    ...open.map(incident => ({ incident, recovery: incident.triage?.category === "Prism Central microservices infrastructure", confirmed: incident.triage?.category !== "Prism Central microservices infrastructure" && incident.availability === "CURRENT" && monitoringPosture(report, incident.source, now).verified }))];
+  const rank = (row: typeof rows[number]) => row.incident.severity === "CRITICAL" ? 0 : row.recovery ? 1 : row.incident.severity === "WARNING" ? 2 : 3;
+  return rows.sort((a, b) => rank(a) - rank(b) || Number(b.recovery) - Number(a.recovery));
+}
+
+export function formatEvidenceAge(seconds: number | null) {
+  return seconds == null ? "Time unknown" : seconds < 60 ? `${seconds}s ago` : seconds < 3600 ? `${Math.floor(seconds / 60)}m ago` : seconds < 86400 ? `${Math.floor(seconds / 3600)}h ago` : `${Math.floor(seconds / 86400)}d ago`;
+}
+
 export function incompleteRecoveries(report: MonitoringReport | null, now = Date.now()) {
   const latest = new Map<string, NonNullable<MonitoringReport>["incidents"][number]>();
   for (const item of report?.incidents ?? []) {
